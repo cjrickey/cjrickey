@@ -40,7 +40,10 @@ def _call_claude(system_prompt: str, payload: dict) -> str:
             {"role": "user", "content": json.dumps(payload, indent=2)},
         ],
     )
-    return message.content[0].text
+    # Sonnet 5 uses adaptive extended thinking, so content[0] isn't reliably
+    # the text block -- a ThinkingBlock can precede it. Pull out the text
+    # block(s) by type instead of assuming position.
+    return "".join(block.text for block in message.content if block.type == "text")
 
 
 if __name__ == "__main__":
