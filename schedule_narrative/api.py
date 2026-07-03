@@ -5,10 +5,8 @@ Endpoints:
   POST /schedules/upload   -- upload an XER, get back data date + WBS tree + activity count
   POST /schedules/{id}/narrative -- given a filter spec, return the generated narrative
 
-The uploaded XER is parsed once and cached in memory per schedule_id for
-this process's lifetime. A real deployment would persist the parsed
-activities (e.g. in Postgres/Supabase) rather than an in-memory dict --
-this is intentionally the simplest thing that works for local dev.
+The uploaded XER is parsed once and persisted to SQLite (storage.py) so
+schedules survive a backend restart. See storage.py for the schema.
 """
 import os
 import uuid
@@ -22,6 +20,7 @@ from xer_parser import parse_xer
 from activity_extractor import extract_activities, pick_primary_proj_id, get_data_date
 from filter_engine import FilterSpec, apply_filters, build_monthly_executive_payload
 from narrative_generator import generate_weekly_oac_narrative, generate_monthly_executive_narrative
+import storage
 
 app = FastAPI(title="Schedule Narrative API")
 
@@ -31,9 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# schedule_id -> {"activities": [...], "data_date": datetime, "wbs_tree": [...]}
-_SCHEDULE_CACHE: dict[str, dict] = {}
 
 
 def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
@@ -79,11 +75,7 @@ async def upload_schedule(file: UploadFile):
         os.remove(tmp_path)
 
     schedule_id = str(uuid.uuid4())
-    _SCHEDULE_CACHE[schedule_id] = {
-        "activities": activities,
-        "data_date": data_date,
-        "wbs_tree": wbs_tree,
-    }
+    storage.save_schedule(schedule_id, data_date, activities, wbs_tree)
 
     return {
         "schedule_id": schedule_id,
@@ -107,7 +99,7 @@ class NarrativeRequest(BaseModel):
 
 @app.post("/schedules/{schedule_id}/narrative")
 async def generate_narrative(schedule_id: str, req: NarrativeRequest):
-    cached = _SCHEDULE_CACHE.get(schedule_id)
+    cached = storage.load_schedule(schedule_id)
     if not cached:
         raise HTTPException(404, "Schedule not found -- upload it again")
 
