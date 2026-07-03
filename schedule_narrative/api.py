@@ -15,6 +15,7 @@ import uuid
 from typing import Optional
 
 from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from xer_parser import parse_xer
@@ -23,6 +24,13 @@ from filter_engine import FilterSpec, apply_filters, build_monthly_executive_pay
 from narrative_generator import generate_weekly_oac_narrative, generate_monthly_executive_narrative
 
 app = FastAPI(title="Schedule Narrative API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # schedule_id -> {"activities": [...], "data_date": datetime, "wbs_tree": [...]}
 _SCHEDULE_CACHE: dict[str, dict] = {}
@@ -117,14 +125,25 @@ async def generate_narrative(schedule_id: str, req: NarrativeRequest):
             max_float_days=req.max_float_days,
         )
         payload = apply_filters(activities, data_date, spec)
-        narrative = generate_weekly_oac_narrative(payload, req.include_schedule_metrics)
+        generate = lambda: generate_weekly_oac_narrative(payload, req.include_schedule_metrics, req.steer)
 
     elif req.report_type == "monthly_executive":
         payload = build_monthly_executive_payload(activities, data_date, req.wbs_node_names)
-        narrative = generate_monthly_executive_narrative(payload, req.include_schedule_metrics)
+        generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer)
 
     else:
         raise HTTPException(400, f"Unknown report_type: {req.report_type}")
+
+    try:
+        narrative = generate()
+    except KeyError:
+        # Unhandled exceptions bypass CORSMiddleware in Starlette's default
+        # middleware stack, so the browser reports an opaque CORS failure
+        # instead of the real error -- raise HTTPException instead so
+        # ExceptionMiddleware (inside CORSMiddleware) handles it properly.
+        raise HTTPException(500, "Server is missing ANTHROPIC_API_KEY")
+    except Exception as exc:
+        raise HTTPException(502, f"Narrative generation failed: {exc}") from exc
 
     return {
         "narrative": narrative,

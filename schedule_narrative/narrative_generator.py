@@ -10,13 +10,21 @@ import os
 from prompt_templates import build_weekly_oac_prompt, build_monthly_executive_prompt
 
 
-def generate_weekly_oac_narrative(filtered_payload: dict, include_schedule_metrics: bool = True) -> str:
+def generate_weekly_oac_narrative(
+    filtered_payload: dict, include_schedule_metrics: bool = True, steer: str | None = None
+) -> str:
     system_prompt = build_weekly_oac_prompt(include_schedule_metrics)
+    if steer:
+        system_prompt += f"\n\nAdditional guidance from the requester, to apply without contradicting the rules above: {steer}"
     return _call_claude(system_prompt, filtered_payload)
 
 
-def generate_monthly_executive_narrative(filtered_payload: dict, include_schedule_metrics: bool = True) -> str:
+def generate_monthly_executive_narrative(
+    filtered_payload: dict, include_schedule_metrics: bool = True, steer: str | None = None
+) -> str:
     system_prompt = build_monthly_executive_prompt(include_schedule_metrics)
+    if steer:
+        system_prompt += f"\n\nAdditional guidance from the requester, to apply without contradicting the rules above: {steer}"
     return _call_claude(system_prompt, filtered_payload)
 
 
