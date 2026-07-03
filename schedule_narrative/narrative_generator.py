@@ -34,16 +34,23 @@ def _call_claude(system_prompt: str, payload: dict) -> str:
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     message = client.messages.create(
         model="claude-sonnet-5",
-        max_tokens=600,
+        # Sonnet 5's adaptive thinking spends part of this budget reasoning
+        # before it writes anything -- on larger schedules (more activities
+        # to weigh) it can exhaust a small budget entirely while thinking,
+        # leaving zero text blocks. 600 was sized for the output text alone
+        # and didn't leave room for that.
+        max_tokens=4096,
         system=system_prompt,
         messages=[
             {"role": "user", "content": json.dumps(payload, indent=2)},
         ],
     )
-    # Sonnet 5 uses adaptive extended thinking, so content[0] isn't reliably
-    # the text block -- a ThinkingBlock can precede it. Pull out the text
-    # block(s) by type instead of assuming position.
-    return "".join(block.text for block in message.content if block.type == "text")
+    # content[0] isn't reliably the text block -- a ThinkingBlock can precede
+    # it -- so pull out the text block(s) by type instead of assuming position.
+    text = "".join(block.text for block in message.content if block.type == "text")
+    if not text.strip():
+        raise ValueError(f"Claude returned no text (stop_reason={message.stop_reason!r})")
+    return text
 
 
 if __name__ == "__main__":
