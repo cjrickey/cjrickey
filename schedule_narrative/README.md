@@ -45,15 +45,30 @@ been run against real data, not just synthetic samples.
   CORS-enabled for the frontend's origin (`FRONTEND_ORIGIN`, defaults to
   `http://localhost:3000`). Verified end-to-end over real HTTP, including
   a real Claude API call and a real generated narrative.
+  - Auth: a single shared bearer token (`API_AUTH_TOKEN`), checked on
+    both endpoints. Unset means no auth (plain localhost dev). There's
+    no per-user account model since this is a single-operator tool, not
+    a multi-tenant product -- if that changes, this needs real accounts,
+    not a bigger shared secret.
+  - Usage cap: `MAX_NARRATIVES_PER_DAY` bounds narrative generations
+    (the Anthropic-API-calling, cost-bearing endpoint) per UTC day,
+    tracked in SQLite. Unset means unlimited. Returns 429 once hit.
 - `frontend/` -- Next.js app: upload panel, cascading-checkbox WBS tree,
   filter panel (report type, lookback/lookahead, critical/milestone
   filters, max float, metrics toggle, steering note), and a narrative
   view with a collapsible "underlying data" panel for provenance.
-  Verified end-to-end in a real browser against the real API.
+  Verified end-to-end in a real browser against the real API. Set
+  `NEXT_PUBLIC_API_TOKEN` to match the backend's `API_AUTH_TOKEN` if set.
 
 ## Not yet built
 
-- Auth, billing, usage caps
+- **Billing.** Deliberately not implemented: there's no pricing model,
+  payment processor, or plan tiers decided anywhere in this project, and
+  building a Stripe integration against invented numbers would just be
+  scaffolding to rip out later. What's here (bearer-token auth + a daily
+  generation cap) covers the actual near-term risk -- an exposed backend
+  burning your Anthropic API budget -- without presuming this is a
+  billed multi-tenant product yet.
 
 ## Running locally
 
@@ -62,6 +77,9 @@ Backend:
 ```
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY=your-key-here
+# optional:
+# export API_AUTH_TOKEN=some-shared-secret
+# export MAX_NARRATIVES_PER_DAY=50
 uvicorn api:app --reload
 ```
 
@@ -70,6 +88,8 @@ Frontend:
 ```
 cd frontend
 npm install
+# if API_AUTH_TOKEN is set on the backend:
+# echo "NEXT_PUBLIC_API_TOKEN=some-shared-secret" >> .env.local
 npm run dev
 ```
 

@@ -7,12 +7,20 @@ Endpoints:
 
 The uploaded XER is parsed once and persisted to SQLite (storage.py) so
 schedules survive a backend restart. See storage.py for the schema.
+
+Auth is a single shared bearer token (API_AUTH_TOKEN) rather than
+per-user accounts -- this is a single-operator tool, not a multi-tenant
+product, so there's no user model to authenticate against. If
+API_AUTH_TOKEN isn't set, auth is skipped entirely (plain localhost dev).
+Usage caps are a daily narrative-generation limit (MAX_NARRATIVES_PER_DAY)
+to bound Anthropic API spend; unset means unlimited.
 """
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, Header, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -30,6 +38,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+API_AUTH_TOKEN = os.environ.get("API_AUTH_TOKEN")
+_max_narratives_env = os.environ.get("MAX_NARRATIVES_PER_DAY")
+MAX_NARRATIVES_PER_DAY = int(_max_narratives_env) if _max_narratives_env else None
+
+
+def require_auth(authorization: Optional[str] = Header(default=None)) -> None:
+    if API_AUTH_TOKEN is None:
+        return
+    if authorization != f"Bearer {API_AUTH_TOKEN}":
+        raise HTTPException(401, "Missing or invalid API token")
 
 
 def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
@@ -55,7 +74,7 @@ def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
     return [build(r) for r in roots]
 
 
-@app.post("/schedules/upload")
+@app.post("/schedules/upload", dependencies=[Depends(require_auth)])
 async def upload_schedule(file: UploadFile):
     if not file.filename.lower().endswith(".xer"):
         raise HTTPException(400, "Only .xer files are supported")
@@ -97,8 +116,12 @@ class NarrativeRequest(BaseModel):
     steer: Optional[str] = None  # optional freeform tone instruction, narrative only
 
 
-@app.post("/schedules/{schedule_id}/narrative")
+@app.post("/schedules/{schedule_id}/narrative", dependencies=[Depends(require_auth)])
 async def generate_narrative(schedule_id: str, req: NarrativeRequest):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if MAX_NARRATIVES_PER_DAY is not None and storage.get_usage_count(today) >= MAX_NARRATIVES_PER_DAY:
+        raise HTTPException(429, f"Daily narrative generation limit of {MAX_NARRATIVES_PER_DAY} reached")
+
     cached = storage.load_schedule(schedule_id)
     if not cached:
         raise HTTPException(404, "Schedule not found -- upload it again")
@@ -136,6 +159,9 @@ async def generate_narrative(schedule_id: str, req: NarrativeRequest):
         raise HTTPException(500, "Server is missing ANTHROPIC_API_KEY")
     except Exception as exc:
         raise HTTPException(502, f"Narrative generation failed: {exc}") from exc
+
+    if MAX_NARRATIVES_PER_DAY is not None:
+        storage.increment_usage(today)
 
     return {
         "narrative": narrative,

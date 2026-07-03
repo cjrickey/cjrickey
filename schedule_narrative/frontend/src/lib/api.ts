@@ -1,6 +1,9 @@
 import type { ApiErrorBody, NarrativeRequest, NarrativeResponse, UploadResponse } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN;
+
+const authHeaders: HeadersInit = API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {};
 
 async function parseErrorDetail(res: Response): Promise<string> {
   try {
@@ -17,6 +20,7 @@ export async function uploadSchedule(file: File): Promise<UploadResponse> {
 
   const res = await fetch(`${API_BASE_URL}/schedules/upload`, {
     method: "POST",
+    headers: authHeaders,
     body: formData,
   });
 
@@ -32,7 +36,7 @@ export async function generateNarrative(
 ): Promise<NarrativeResponse> {
   const res = await fetch(`${API_BASE_URL}/schedules/${scheduleId}/narrative`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders },
     body: JSON.stringify(req),
   });
 

@@ -32,6 +32,14 @@ def _get_conn() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS narrative_usage (
+            day TEXT PRIMARY KEY,
+            count INTEGER NOT NULL
+        )
+        """
+    )
     return conn
 
 
@@ -53,6 +61,23 @@ def save_schedule(
                 datetime.utcnow().isoformat(),
             ),
         )
+
+
+def get_usage_count(day: str) -> int:
+    with _get_conn() as conn:
+        row = conn.execute("SELECT count FROM narrative_usage WHERE day = ?", (day,)).fetchone()
+    return row[0] if row else 0
+
+
+def increment_usage(day: str) -> int:
+    with _get_conn() as conn:
+        conn.execute(
+            "INSERT INTO narrative_usage (day, count) VALUES (?, 1) "
+            "ON CONFLICT(day) DO UPDATE SET count = count + 1",
+            (day,),
+        )
+        row = conn.execute("SELECT count FROM narrative_usage WHERE day = ?", (day,)).fetchone()
+    return row[0]
 
 
 def load_schedule(schedule_id: str) -> Optional[dict]:
