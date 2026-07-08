@@ -1,14 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useAuth, UserButton } from "@clerk/nextjs";
 import { UploadPanel } from "@/components/UploadPanel";
 import { WbsTree } from "@/components/WbsTree";
 import { FilterPanel, DEFAULT_FILTER_STATE, type FilterState } from "@/components/FilterPanel";
 import { NarrativeOutput } from "@/components/NarrativeOutput";
-import { generateNarrative, uploadSchedule } from "@/lib/api";
+import { SubscriptionGate } from "@/components/SubscriptionGate";
+import { createPortalSession, generateNarrative, uploadSchedule } from "@/lib/api";
 import type { NarrativeResponse, UploadResponse } from "@/lib/types";
 
 export default function Home() {
+  return (
+    <SubscriptionGate>
+      <ScheduleNarrativeApp />
+    </SubscriptionGate>
+  );
+}
+
+function ScheduleNarrativeApp() {
+  const { getToken } = useAuth();
   const [schedule, setSchedule] = useState<UploadResponse | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -24,7 +35,9 @@ export default function Home() {
     setUploading(true);
     setUploadError(null);
     try {
-      const res = await uploadSchedule(file);
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const res = await uploadSchedule(file, token);
       setSchedule(res);
       setCheckedWbsNames(new Set());
       setResult(null);
@@ -40,21 +53,27 @@ export default function Home() {
     setGenerating(true);
     setGenerateError(null);
     try {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
       const maxFloatDays = filters.maxFloatDays.trim() === "" ? null : Number(filters.maxFloatDays);
       const lookbackDays = filters.lookbackDays.trim() === "" ? 7 : Number(filters.lookbackDays);
       const lookaheadDays = filters.lookaheadDays.trim() === "" ? 7 : Number(filters.lookaheadDays);
-      const res = await generateNarrative(schedule.schedule_id, {
-        report_type: filters.reportType,
-        lookback_days: lookbackDays,
-        lookahead_days: lookaheadDays,
-        wbs_node_names: checkedWbsNames.size > 0 ? Array.from(checkedWbsNames) : null,
-        critical_only: filters.criticalOnly,
-        milestones_only: filters.milestonesOnly,
-        max_float_days: maxFloatDays,
-        include_schedule_metrics: filters.includeScheduleMetrics,
-        steer: filters.steer.trim() === "" ? null : filters.steer.trim(),
-        sections: filters.sections,
-      });
+      const res = await generateNarrative(
+        schedule.schedule_id,
+        {
+          report_type: filters.reportType,
+          lookback_days: lookbackDays,
+          lookahead_days: lookaheadDays,
+          wbs_node_names: checkedWbsNames.size > 0 ? Array.from(checkedWbsNames) : null,
+          critical_only: filters.criticalOnly,
+          milestones_only: filters.milestonesOnly,
+          max_float_days: maxFloatDays,
+          include_schedule_metrics: filters.includeScheduleMetrics,
+          steer: filters.steer.trim() === "" ? null : filters.steer.trim(),
+          sections: filters.sections,
+        },
+        token,
+      );
       setResult(res);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : "Narrative generation failed");
@@ -63,15 +82,34 @@ export default function Home() {
     }
   }
 
+  async function handleManageBilling() {
+    const token = await getToken();
+    if (!token) return;
+    const { portal_url } = await createPortalSession(token);
+    window.location.href = portal_url;
+  }
+
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-4xl px-6 py-12">
-        <header className="border-b border-rule pb-6 mb-8">
-          <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative</h1>
-          <p className="text-sm text-ink-muted mt-1">
-            Upload a P6 XER or XML export. Generate a weekly OAC or monthly executive narrative grounded strictly in
-            the schedule&rsquo;s own data.
-          </p>
+        <header className="border-b border-rule pb-6 mb-8 flex items-start justify-between gap-6">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative</h1>
+            <p className="text-sm text-ink-muted mt-1">
+              Upload a P6 XER or XML export. Generate a weekly OAC or monthly executive narrative grounded strictly in
+              the schedule&rsquo;s own data.
+            </p>
+          </div>
+          <div className="flex items-center gap-4 shrink-0">
+            <button
+              type="button"
+              onClick={handleManageBilling}
+              className="text-sm text-ink-muted hover:text-oxide transition-colors"
+            >
+              Manage billing
+            </button>
+            <UserButton />
+          </div>
         </header>
 
         {!schedule ? (

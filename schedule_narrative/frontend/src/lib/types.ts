@@ -46,3 +46,8 @@ export type NarrativeResponse = {
 export type ApiErrorBody = {
   detail?: string;
 };
+
+export type BillingStatus = {
+  subscribed: boolean;
+  status: string | null;
+};

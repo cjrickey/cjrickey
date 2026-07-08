@@ -5,24 +5,29 @@ Endpoints:
   POST /schedules/upload   -- upload an XER, get back data date + WBS tree + activity count
   POST /schedules/{id}/narrative -- given a filter spec, return the generated narrative
 
-The uploaded XER is parsed once and persisted to SQLite (storage.py) so
-schedules survive a backend restart. See storage.py for the schema.
+The uploaded XER is parsed once and persisted (storage.py, SQLite locally
+/ Postgres in production) so schedules survive a backend restart. See
+storage.py for the schema.
 
-Auth is a single shared bearer token (API_AUTH_TOKEN) rather than
-per-user accounts -- this is a single-operator tool, not a multi-tenant
-product, so there's no user model to authenticate against. If
-API_AUTH_TOKEN isn't set, auth is skipped entirely (plain localhost dev).
-Usage caps are a daily narrative-generation limit (MAX_NARRATIVES_PER_DAY)
-to bound Anthropic API spend; unset means unlimited.
+Auth is per-user: the frontend signs users in via Clerk and attaches
+their session token as a bearer token; clerk_auth.require_user verifies
+it and returns the Clerk user id, which scopes every schedule and usage
+row. Both endpoints additionally require an active Stripe subscription
+(billing.require_active_subscription) -- this is a paid product, not a
+single-operator tool with a shared secret anymore.
+
+Usage caps are a daily per-user narrative-generation limit
+(MAX_NARRATIVES_PER_DAY) to bound Anthropic API spend on top of the
+subscription; unset means unlimited.
 """
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 
 from xer_parser import parse_xer
 from xml_parser import parse_p6_xml, pick_primary_project, find_matching_baseline
@@ -36,6 +41,8 @@ from activity_extractor import (
 from filter_engine import FilterSpec, apply_filters, build_monthly_executive_payload
 from narrative_generator import generate_weekly_oac_narrative, generate_monthly_executive_narrative
 from prompt_templates import OptionalSections
+from clerk_auth import require_user
+from billing import require_active_subscription, router as billing_router
 import storage
 
 app = FastAPI(title="Schedule Narrative API")
@@ -47,16 +54,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-API_AUTH_TOKEN = os.environ.get("API_AUTH_TOKEN")
+app.include_router(billing_router)
+
 _max_narratives_env = os.environ.get("MAX_NARRATIVES_PER_DAY")
 MAX_NARRATIVES_PER_DAY = int(_max_narratives_env) if _max_narratives_env else None
-
-
-def require_auth(authorization: Optional[str] = Header(default=None)) -> None:
-    if API_AUTH_TOKEN is None:
-        return
-    if authorization != f"Bearer {API_AUTH_TOKEN}":
-        raise HTTPException(401, "Missing or invalid API token")
 
 
 def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
@@ -118,8 +119,8 @@ def _sniff_file_kind(contents: bytes) -> str:
     return "unknown"
 
 
-@app.post("/schedules/upload", dependencies=[Depends(require_auth)])
-async def upload_schedule(file: UploadFile):
+@app.post("/schedules/upload")
+async def upload_schedule(file: UploadFile, user_id: str = Depends(require_active_subscription)):
     contents = await file.read()
     kind = _sniff_file_kind(contents)
     if kind == "unknown":
@@ -148,7 +149,7 @@ async def upload_schedule(file: UploadFile):
         os.remove(tmp_path)
 
     schedule_id = str(uuid.uuid4())
-    storage.save_schedule(schedule_id, data_date, activities, wbs_tree)
+    storage.save_schedule(schedule_id, user_id, data_date, activities, wbs_tree)
 
     return {
         "schedule_id": schedule_id,
@@ -191,13 +192,15 @@ class NarrativeRequest(BaseModel):
     sections: NarrativeSections = NarrativeSections()
 
 
-@app.post("/schedules/{schedule_id}/narrative", dependencies=[Depends(require_auth)])
-async def generate_narrative(schedule_id: str, req: NarrativeRequest):
+@app.post("/schedules/{schedule_id}/narrative")
+async def generate_narrative(
+    schedule_id: str, req: NarrativeRequest, user_id: str = Depends(require_active_subscription)
+):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    if MAX_NARRATIVES_PER_DAY is not None and storage.get_usage_count(today) >= MAX_NARRATIVES_PER_DAY:
+    if MAX_NARRATIVES_PER_DAY is not None and storage.get_usage_count(user_id, today) >= MAX_NARRATIVES_PER_DAY:
         raise HTTPException(429, f"Daily narrative generation limit of {MAX_NARRATIVES_PER_DAY} reached")
 
-    cached = storage.load_schedule(schedule_id)
+    cached = storage.load_schedule(schedule_id, user_id)
     if not cached:
         raise HTTPException(404, "Schedule not found -- upload it again")
 
@@ -237,7 +240,7 @@ async def generate_narrative(schedule_id: str, req: NarrativeRequest):
         raise HTTPException(502, f"Narrative generation failed: {exc}") from exc
 
     if MAX_NARRATIVES_PER_DAY is not None:
-        storage.increment_usage(today)
+        storage.increment_usage(user_id, today)
 
     return {
         "narrative": narrative,

@@ -84,10 +84,27 @@ been run against real data, not just synthetic samples.
   filtered payload, plus an optional `steer` freeform tone instruction.
   Requires `ANTHROPIC_API_KEY` in the environment -- not included here,
   supply your own.
-- `storage.py` -- SQLite-backed persistence for parsed schedules
-  (`schedules.db` by default, override with `SCHEDULE_DB_PATH`), so an
-  uploaded schedule survives a backend restart. `Activity` round-trips
-  through JSON via `to_dict()` / `Activity(**dict)`.
+- `storage.py` -- persistence via SQLAlchemy Core, so the same code runs
+  against local SQLite (`sqlite:///schedules.db`, the zero-setup default)
+  or production Postgres (set `DATABASE_URL`). Schedules and narrative
+  usage counts are scoped per user (`owner_user_id`, the Clerk user id)
+  now that this is multi-tenant -- one user can never load another
+  user's schedule by guessing a `schedule_id`. Also holds the
+  `subscriptions` table (Clerk user id -> Stripe customer/subscription
+  id + status). `Activity` round-trips through JSON via `to_dict()` /
+  `Activity(**dict)`.
+- `clerk_auth.py` -- verifies the Clerk session token the frontend
+  attaches as `Authorization: Bearer <token>`, against Clerk's public
+  JWKS (fetched once, cached in memory). Returns the Clerk user id (the
+  `sub` claim). Requires `CLERK_ISSUER` (found in the Clerk dashboard).
+- `billing.py` -- Stripe billing: a single $15/month plan via Stripe
+  Checkout (`POST /billing/create-checkout-session`), the Stripe Customer
+  Portal for self-serve cancel/update-card (`POST
+  /billing/create-portal-session`), a webhook (`POST /billing/webhook`)
+  that keeps the `subscriptions` table in sync with Stripe, and
+  `GET /billing/status` for the frontend to check. `require_active_subscription`
+  is the FastAPI dependency that gates the actual narrative-generating
+  endpoints -- 402 if the signed-in user isn't an active subscriber.
 - `api.py` -- FastAPI service. `POST /schedules/upload` (multipart XER
   or XML file -- auto-detected by content, not filename extension) and
   `POST /schedules/{id}/narrative` (filter spec -> narrative). The
@@ -96,14 +113,15 @@ been run against real data, not just synthetic samples.
   CORS-enabled for the frontend's origin (`FRONTEND_ORIGIN`, defaults to
   `http://localhost:3000`). Verified end-to-end over real HTTP, including
   a real Claude API call and a real generated narrative.
-  - Auth: a single shared bearer token (`API_AUTH_TOKEN`), checked on
-    both endpoints. Unset means no auth (plain localhost dev). There's
-    no per-user account model since this is a single-operator tool, not
-    a multi-tenant product -- if that changes, this needs real accounts,
-    not a bigger shared secret.
-  - Usage cap: `MAX_NARRATIVES_PER_DAY` bounds narrative generations
-    (the Anthropic-API-calling, cost-bearing endpoint) per UTC day,
-    tracked in SQLite. Unset means unlimited. Returns 429 once hit.
+  - Auth: every request must carry a valid Clerk session token AND belong
+    to a user with an active Stripe subscription (both endpoints depend
+    on `billing.require_active_subscription`, which itself depends on
+    `clerk_auth.require_user`). There's no anonymous/shared-secret mode
+    anymore -- this is a paid, multi-tenant product.
+  - Usage cap: `MAX_NARRATIVES_PER_DAY` additionally bounds narrative
+    generations (the Anthropic-API-calling, cost-bearing endpoint) per
+    user per UTC day, on top of the subscription gate. Unset means
+    unlimited. Returns 429 once hit.
 - `frontend/` -- Next.js app: upload panel, cascading-checkbox WBS tree,
   filter panel (report type, lookback/lookahead, critical/milestone
   filters, max float, metrics toggle, nine optional-section checkboxes,
@@ -111,40 +129,94 @@ been run against real data, not just synthetic samples.
   data" panel for provenance. The baseline-only optional section
   (Milestone changes) is greyed out and labeled "(requires baseline)"
   whenever the uploaded file has no baseline. Verified end-to-end in a
-  real browser against the real API. Set `NEXT_PUBLIC_API_TOKEN` to
-  match the backend's `API_AUTH_TOKEN` if set.
+  real browser against the real API.
+  - Auth: `@clerk/nextjs` handles sign-in/sign-up (`/sign-in`, `/sign-up`)
+    and session management. `src/proxy.ts` (Next.js 16 renamed
+    `middleware.ts` to `proxy.ts`) just makes the session available on
+    every request -- it doesn't gate access itself, since Clerk now
+    recommends resource-based checks over route-matcher middleware. The
+    actual gate is `SubscriptionGate` (wraps the main page): redirects
+    signed-out users to `/sign-in`, and signed-in-but-unsubscribed users
+    to `/pricing`. This is a UX convenience only -- the backend never
+    trusts it and re-checks everything itself.
+  - `/pricing` -- the $15/month subscribe page; "Subscribe" creates a
+    Stripe Checkout session and redirects there. A "Manage billing" link
+    in the main app opens the Stripe Customer Portal (cancel, update
+    card, view invoices) via a generated portal session.
 
-## Not yet built
+## Accounts you'll need
 
-- **Billing.** Deliberately not implemented: there's no pricing model,
-  payment processor, or plan tiers decided anywhere in this project, and
-  building a Stripe integration against invented numbers would just be
-  scaffolding to rip out later. What's here (bearer-token auth + a daily
-  generation cap) covers the actual near-term risk -- an exposed backend
-  burning your Anthropic API budget -- without presuming this is a
-  billed multi-tenant product yet.
+- **Anthropic** (already required) -- API key for narrative generation.
+- **Clerk** (clerk.com) -- free tier is enough to start. Create an
+  application, grab the publishable + secret keys, and the Frontend API
+  URL (this is `CLERK_ISSUER`).
+- **Stripe** (stripe.com) -- create a Product with a recurring $15/month
+  Price; note the Price id (`price_...`). Use test-mode keys until you're
+  ready to charge real cards.
+- **Render** (render.com) -- hosts the FastAPI backend + a managed
+  Postgres database. `render.yaml` at the repo root defines both as a
+  Blueprint.
+- **Vercel** (vercel.com) -- hosts the Next.js frontend. Point the
+  project's Root Directory at `schedule_narrative/frontend`.
+
+## Environment variables
+
+Backend (Render, or a local `.env`/exported shell vars):
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | yes | Claude API key |
+| `CLERK_ISSUER` | yes | Clerk dashboard -> your app -> API Keys -> "Frontend API URL" |
+| `STRIPE_SECRET_KEY` | yes | Stripe dashboard -> Developers -> API keys |
+| `STRIPE_PRICE_ID` | yes | the `price_...` id for the $15/month Price |
+| `STRIPE_WEBHOOK_SECRET` | yes | from the Stripe webhook endpoint you create (see below) |
+| `FRONTEND_ORIGIN` | yes | your deployed frontend URL, e.g. `https://schedule-narrative.vercel.app` (defaults to `http://localhost:3000`) |
+| `DATABASE_URL` | production only | Render sets this automatically via the Blueprint; local dev falls back to SQLite (`schedules.db`) if unset |
+| `MAX_NARRATIVES_PER_DAY` | no | per-user daily generation cap; unset = unlimited |
+
+Frontend (Vercel, or `frontend/.env.local`):
+
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | yes | Clerk dashboard -> API Keys |
+| `CLERK_SECRET_KEY` | yes | Clerk dashboard -> API Keys |
+| `NEXT_PUBLIC_API_BASE_URL` | yes | your deployed backend URL, e.g. `https://schedule-narrative-api.onrender.com` (defaults to `http://localhost:8000`) |
 
 ## Running locally
 
 Backend:
 
 ```
+cd schedule_narrative
 pip install -r requirements.txt
 export ANTHROPIC_API_KEY=your-key-here
-# optional:
-# export API_AUTH_TOKEN=some-shared-secret
-# export MAX_NARRATIVES_PER_DAY=50
+export CLERK_ISSUER=https://your-app.clerk.accounts.dev
+export STRIPE_SECRET_KEY=sk_test_...
+export STRIPE_PRICE_ID=price_...
+export STRIPE_WEBHOOK_SECRET=whsec_...   # from `stripe listen`, see below
 uvicorn api:app --reload
 ```
+
+For local Stripe webhook testing, install the [Stripe CLI](https://stripe.com/docs/stripe-cli) and run `stripe listen --forward-to localhost:8000/billing/webhook` in a separate terminal -- it prints a `whsec_...` value to use above.
 
 Frontend:
 
 ```
-cd frontend
+cd schedule_narrative/frontend
 npm install
-# if API_AUTH_TOKEN is set on the backend:
-# echo "NEXT_PUBLIC_API_TOKEN=some-shared-secret" >> .env.local
+echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_..." >> .env.local
+echo "CLERK_SECRET_KEY=sk_test_..." >> .env.local
 npm run dev
 ```
 
-Then open `http://localhost:3000`, upload a `.xer` or `.xml` file, and generate a narrative. Only a `.xml` export with the Project Baseline included will show variance vs. baseline -- the app tells you which case you're in right after upload.
+Then open `http://localhost:3000`. You'll be redirected to sign in, then to `/pricing` to subscribe (use a [Stripe test card](https://stripe.com/docs/testing), e.g. `4242 4242 4242 4242`), then to the tool itself. Upload a `.xer` or `.xml` file and generate a narrative -- only a `.xml` export with the Project Baseline included will show variance vs. baseline; the app tells you which case you're in right after upload.
+
+## Deploying to production
+
+1. **Clerk**: create a production instance (separate from your dev instance), get its publishable/secret keys and Frontend API URL.
+2. **Stripe**: switch to live-mode keys and create the live-mode $15/month Price (test-mode and live-mode Products/Prices are separate).
+3. **Render**: connect this repo, deploy via the `render.yaml` Blueprint (New -> Blueprint). Set the secret env vars listed above in the dashboard (they're marked `sync: false` in `render.yaml` so they're never committed).
+4. **Vercel**: import this repo, set the Root Directory to `schedule_narrative/frontend`, set the frontend env vars above.
+5. Set `FRONTEND_ORIGIN` on Render to your live Vercel URL, and `NEXT_PUBLIC_API_BASE_URL` on Vercel to your live Render URL.
+6. **Stripe webhook**: in the Stripe dashboard, add an endpoint pointing to `https://<your-render-url>/billing/webhook`, subscribed to `checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`, and `invoice.payment_failed`. Copy its signing secret into `STRIPE_WEBHOOK_SECRET` on Render.
+7. Redeploy both services after setting env vars, then run through the signup -> checkout -> upload -> generate flow once end-to-end with a real test card before switching Stripe to live mode.

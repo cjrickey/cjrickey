@@ -2,3 +2,8 @@ fastapi
 uvicorn
 python-multipart
 anthropic
+sqlalchemy
+psycopg2-binary
+stripe
+PyJWT[crypto]
+requests

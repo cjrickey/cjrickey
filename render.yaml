@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: schedule-narrative-api
+    runtime: python
+    plan: starter
+    rootDir: schedule_narrative
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: schedule-narrative-db
+          property: connectionString
+      # Set the rest of these in the Render dashboard (Environment tab) --
+      # they're secrets, so they're deliberately not committed here.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLERK_ISSUER
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: MAX_NARRATIVES_PER_DAY
+        sync: false
+
+databases:
+  - name: schedule-narrative-db
+    plan: starter
