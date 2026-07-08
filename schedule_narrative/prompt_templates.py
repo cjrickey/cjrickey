@@ -46,6 +46,9 @@ should happen next -- describe the facts and let the reader interpret their sign
 Style: tactical, concise, foreman-to-owner register -- not executive summary language. Keep \
 to roughly 150-250 words total. No preamble, no "in summary" -- this gets read out loud or \
 dropped straight into meeting minutes.
+
+Never write raw field names or JSON-style notation in the output (e.g. "(is_critical: true)", \
+"(total_float_days: -4)") -- translate every fact into plain English prose.
 """
 
 METRICS_ON = """\
@@ -54,7 +57,7 @@ containing the most-negative total_float_days value goes first, and so on down t
 with only positive-float, non-critical work. Within each area group, mention the most \
 behind-schedule activity in that area first, before less urgent items in the same area.
 
-Critical path activities (is_critical: true) must be called out explicitly. When \
+Critical path activities must be called out explicitly. When \
 total_float_days is negative, do not simply say "critical" -- state plainly that the \
 activity is running behind the schedule's driving path by roughly that many days. Negative \
 float is a materially different signal than zero float ("exactly critical, no slack") and \
@@ -100,6 +103,9 @@ Style: executive register -- confident, plain, no jargon, no hedging language ("
 "seems to"). Lead with the overall status in one sentence, then specifics. Target 100-150 \
 words. This will be read by people who skim, so the first sentence must stand alone as the \
 takeaway.
+
+Never write raw field names or JSON-style notation in the output (e.g. "(is_critical: true)", \
+"(total_float_days: -4)") -- translate every fact into plain English prose.
 """
 
 MONTHLY_METRICS_ON = """\
@@ -161,12 +167,12 @@ also covered elsewhere in the narrative.\
 """,
     "critical_path_narrative": """\
 Add a "Critical Path Narrative" section: describe which activities are currently on the \
-critical path (is_critical: true), their float status, and how they sequence in the near \
+critical path, their float status, and how they sequence in the near \
 term. Focus specifically on critical-path continuity and risk rather than repeating other \
 sections verbatim.\
 """,
     "milestone_changes": """\
-Add a "Milestone Changes" section: for each milestone (is_milestone: true) where \
+Add a "Milestone Changes" section: for each milestone where \
 variance_days is present and nonzero, state how many days it has moved from its P6 Baseline \
 target and whether that's an improvement or slippage. If no milestone in the payload has \
 variance_days present, state plainly that no baseline-based milestone comparison is \

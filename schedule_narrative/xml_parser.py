@@ -50,10 +50,37 @@ def pick_primary_project(root: ET.Element) -> ET.Element:
     return max(projects, key=lambda p: len(p.findall("Activity")))
 
 
-def find_matching_baseline(root: ET.Element, project_object_id: str) -> Optional[ET.Element]:
-    """The <BaselineProject> whose OriginalProjectObjectId points back to
-    the given live project, if one was included in this export."""
-    for baseline in root.findall("BaselineProject"):
-        if baseline.findtext("OriginalProjectObjectId") == project_object_id:
-            return baseline
+def _project_list_baseline_object_id(root: ET.Element, project_object_id: str) -> Optional[str]:
+    """<ProjectList><Project ObjectId="X"><BaselineProject ObjectId="Y"> names
+    the specific baseline P6 associates with this project in the export --
+    this is the deterministic signal for "which one," since a file can embed
+    more than one <BaselineProject> that all point back to the same live
+    project (e.g. several named baselines selected at export time)."""
+    for project in root.find("ProjectList").findall("Project") if root.find("ProjectList") is not None else []:
+        if project.get("ObjectId") == project_object_id:
+            baseline_ref = project.find("BaselineProject")
+            if baseline_ref is not None:
+                return baseline_ref.get("ObjectId")
     return None
+
+
+def find_matching_baseline(root: ET.Element, project_object_id: str) -> Optional[ET.Element]:
+    """The <BaselineProject> P6 actually associates with the given live
+    project. Prefers the specific one named in <ProjectList> (see above);
+    falls back to matching by OriginalProjectObjectId only if that
+    reference isn't present, and only when there's exactly one candidate --
+    picking arbitrarily among several would silently use the wrong
+    baseline, which is worse than reporting none."""
+    named_id = _project_list_baseline_object_id(root, project_object_id)
+    if named_id is not None:
+        for baseline in root.findall("BaselineProject"):
+            if baseline.findtext("ObjectId") == named_id:
+                return baseline
+        return None
+
+    candidates = [
+        baseline
+        for baseline in root.findall("BaselineProject")
+        if baseline.findtext("OriginalProjectObjectId") == project_object_id
+    ]
+    return candidates[0] if len(candidates) == 1 else None
