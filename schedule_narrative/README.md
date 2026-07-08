@@ -99,7 +99,7 @@ been run against real data, not just synthetic samples.
   `sub` claim). Requires `CLERK_ISSUER` (found in the Clerk dashboard).
 - `billing.py` -- Stripe billing. Plans: a free trial (`TRIAL_NARRATIVE_LIMIT`,
   default 3, narratives with no card required), and Professional at
-  $29/month or $290/year (two months free) for unlimited narratives.
+  $22/month or $220/year (two months free) for unlimited narratives.
   Checkout (`POST /billing/create-checkout-session`, body `{"plan":
   "monthly"|"annual"}`) picks the matching Stripe Price
   (`STRIPE_PRICE_ID_MONTHLY` / `STRIPE_PRICE_ID_ANNUAL`); the Stripe
@@ -152,7 +152,7 @@ been run against real data, not just synthetic samples.
     is what's blocked, with an inline prompt to subscribe. This is a UX
     convenience only -- the backend never trusts it and re-checks
     everything itself.
-  - `/pricing` -- monthly ($29) vs. annual ($290, two months free) plan
+  - `/pricing` -- monthly ($22) vs. annual ($220, two months free) plan
     picker; "Subscribe" creates a Stripe Checkout session for the chosen
     plan and redirects there. A "Manage billing" link in the main app
     (shown once subscribed) opens the Stripe Customer Portal (cancel,
@@ -165,7 +165,7 @@ been run against real data, not just synthetic samples.
   application, grab the publishable + secret keys, and the Frontend API
   URL (this is `CLERK_ISSUER`).
 - **Stripe** (stripe.com) -- create a "Professional" Product with two
-  recurring Prices: $29/month and $290/year; note both Price ids
+  recurring Prices: $22/month and $220/year; note both Price ids
   (`price_...`). Use test-mode keys until you're ready to charge real
   cards.
 - **Render** (render.com) -- hosts the FastAPI backend + a managed
@@ -177,7 +177,7 @@ been run against real data, not just synthetic samples.
 ## Pricing model
 
 - **Free**: 3 narratives, no credit card required.
-- **Professional**: $29/month, or $290/year (two months free vs. paying
+- **Professional**: $22/month, or $220/year (two months free vs. paying
   monthly) -- unlimited narratives. Cancel any time via the Stripe
   Customer Portal.
 
@@ -190,8 +190,8 @@ Backend (Render, or a local `.env`/exported shell vars):
 | `ANTHROPIC_API_KEY` | yes | Claude API key |
 | `CLERK_ISSUER` | yes | Clerk dashboard -> your app -> API Keys -> "Frontend API URL" |
 | `STRIPE_SECRET_KEY` | yes | Stripe dashboard -> Developers -> API keys |
-| `STRIPE_PRICE_ID_MONTHLY` | yes | the `price_...` id for the $29/month Price |
-| `STRIPE_PRICE_ID_ANNUAL` | yes | the `price_...` id for the $290/year Price |
+| `STRIPE_PRICE_ID_MONTHLY` | yes | the `price_...` id for the $22/month Price |
+| `STRIPE_PRICE_ID_ANNUAL` | yes | the `price_...` id for the $220/year Price |
 | `STRIPE_WEBHOOK_SECRET` | yes | from the Stripe webhook endpoint you create (see below) |
 | `FRONTEND_ORIGIN` | yes | your deployed frontend URL, e.g. `https://schedule-narrative.vercel.app` (defaults to `http://localhost:3000`) |
 | `DATABASE_URL` | production only | Render sets this automatically via the Blueprint; local dev falls back to SQLite (`schedules.db`) if unset |
@@ -239,7 +239,7 @@ Then open `http://localhost:3000`. You'll be redirected to sign in, then straigh
 ## Deploying to production
 
 1. **Clerk**: create a production instance (separate from your dev instance), get its publishable/secret keys and Frontend API URL.
-2. **Stripe**: switch to live-mode keys and create the live-mode Professional Product with its $29/month and $290/year Prices (test-mode and live-mode Products/Prices are separate).
+2. **Stripe**: switch to live-mode keys and create the live-mode Professional Product with its $22/month and $220/year Prices (test-mode and live-mode Products/Prices are separate).
 3. **Render**: connect this repo, deploy via the `render.yaml` Blueprint (New -> Blueprint). Set the secret env vars listed above in the dashboard (they're marked `sync: false` in `render.yaml` so they're never committed).
 4. **Vercel**: import this repo, set the Root Directory to `schedule_narrative/frontend`, set the frontend env vars above.
 5. Set `FRONTEND_ORIGIN` on Render to your live Vercel URL, and `NEXT_PUBLIC_API_BASE_URL` on Vercel to your live Render URL.

@@ -64,7 +64,7 @@ function PricingContent() {
               plan === "monthly" ? "bg-oxide text-white" : "text-ink-muted hover:text-ink"
             }`}
           >
-            $29 / month
+            $22 / month
           </button>
           <button
             type="button"
@@ -73,7 +73,7 @@ function PricingContent() {
               plan === "annual" ? "bg-oxide text-white" : "text-ink-muted hover:text-ink"
             }`}
           >
-            $290 / year
+            $220 / year
           </button>
         </div>
 

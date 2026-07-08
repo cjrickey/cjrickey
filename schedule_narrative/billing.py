@@ -1,6 +1,6 @@
 """
 Stripe billing: a free trial (TRIAL_LIMIT narratives, no card required),
-then Professional -- $29/month or $290/year (two months free) for
+then Professional -- $22/month or $220/year (two months free) for
 unlimited narratives. Self-serve via Stripe Checkout; managed
 (cancel/update card) via the Stripe Customer Portal; kept in sync with
 our `subscriptions` table via webhook.
