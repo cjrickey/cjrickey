@@ -25,6 +25,7 @@ from sqlalchemy import (
     Table,
     Text,
     create_engine,
+    func,
     select,
 )
 
@@ -126,6 +127,19 @@ def get_usage_count(user_id: str, day: str) -> int:
             select(narrative_usage.c.count).where(
                 narrative_usage.c.user_id == user_id,
                 narrative_usage.c.day == day,
+            )
+        ).fetchone()
+    return row[0] if row else 0
+
+
+def get_total_narrative_count(user_id: str) -> int:
+    """Lifetime narrative count for a user, across all days -- this is what
+    the free trial (3 narratives, no card) counts against, independent of
+    any per-day cap."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            select(func.coalesce(func.sum(narrative_usage.c.count), 0)).where(
+                narrative_usage.c.user_id == user_id
             )
         ).fetchone()
     return row[0] if row else 0

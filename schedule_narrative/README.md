@@ -97,14 +97,20 @@ been run against real data, not just synthetic samples.
   attaches as `Authorization: Bearer <token>`, against Clerk's public
   JWKS (fetched once, cached in memory). Returns the Clerk user id (the
   `sub` claim). Requires `CLERK_ISSUER` (found in the Clerk dashboard).
-- `billing.py` -- Stripe billing: a single $15/month plan via Stripe
-  Checkout (`POST /billing/create-checkout-session`), the Stripe Customer
-  Portal for self-serve cancel/update-card (`POST
-  /billing/create-portal-session`), a webhook (`POST /billing/webhook`)
-  that keeps the `subscriptions` table in sync with Stripe, and
-  `GET /billing/status` for the frontend to check. `require_active_subscription`
-  is the FastAPI dependency that gates the actual narrative-generating
-  endpoints -- 402 if the signed-in user isn't an active subscriber.
+- `billing.py` -- Stripe billing. Plans: a free trial (`TRIAL_NARRATIVE_LIMIT`,
+  default 3, narratives with no card required), and Professional at
+  $29/month or $290/year (two months free) for unlimited narratives.
+  Checkout (`POST /billing/create-checkout-session`, body `{"plan":
+  "monthly"|"annual"}`) picks the matching Stripe Price
+  (`STRIPE_PRICE_ID_MONTHLY` / `STRIPE_PRICE_ID_ANNUAL`); the Stripe
+  Customer Portal handles self-serve cancel/update-card (`POST
+  /billing/create-portal-session`); a webhook (`POST /billing/webhook`)
+  keeps the `subscriptions` table in sync with Stripe; `GET
+  /billing/status` reports subscription status plus trial narratives
+  used/remaining for the frontend. `require_narrative_access` is the
+  FastAPI dependency that gates narrative generation -- allows an active
+  subscriber through, or a user still under the trial limit, and 402s
+  otherwise.
 - `api.py` -- FastAPI service. `POST /schedules/upload` (multipart XER
   or XML file -- auto-detected by content, not filename extension) and
   `POST /schedules/{id}/narrative` (filter spec -> narrative). The
@@ -113,15 +119,19 @@ been run against real data, not just synthetic samples.
   CORS-enabled for the frontend's origin (`FRONTEND_ORIGIN`, defaults to
   `http://localhost:3000`). Verified end-to-end over real HTTP, including
   a real Claude API call and a real generated narrative.
-  - Auth: every request must carry a valid Clerk session token AND belong
-    to a user with an active Stripe subscription (both endpoints depend
-    on `billing.require_active_subscription`, which itself depends on
-    `clerk_auth.require_user`). There's no anonymous/shared-secret mode
-    anymore -- this is a paid, multi-tenant product.
+  - Auth: every request must carry a valid Clerk session token. Uploading
+    only requires being signed in (parsing a schedule is free); generating
+    a narrative additionally requires an active subscription or remaining
+    free-trial narratives (`billing.require_narrative_access`, which
+    itself depends on `clerk_auth.require_user`). There's no
+    anonymous/shared-secret mode anymore -- this is a paid, multi-tenant
+    product.
   - Usage cap: `MAX_NARRATIVES_PER_DAY` additionally bounds narrative
     generations (the Anthropic-API-calling, cost-bearing endpoint) per
-    user per UTC day, on top of the subscription gate. Unset means
-    unlimited. Returns 429 once hit.
+    user per UTC day, on top of the trial/subscription gate. Unset means
+    unlimited. Returns 429 once hit. Every successful generation is
+    recorded regardless of this setting, since the free trial counts
+    lifetime narratives against the same table.
 - `frontend/` -- Next.js app: upload panel, cascading-checkbox WBS tree,
   filter panel (report type, lookback/lookahead, critical/milestone
   filters, max float, metrics toggle, nine optional-section checkboxes,
@@ -134,15 +144,19 @@ been run against real data, not just synthetic samples.
     and session management. `src/proxy.ts` (Next.js 16 renamed
     `middleware.ts` to `proxy.ts`) just makes the session available on
     every request -- it doesn't gate access itself, since Clerk now
-    recommends resource-based checks over route-matcher middleware. The
-    actual gate is `SubscriptionGate` (wraps the main page): redirects
-    signed-out users to `/sign-in`, and signed-in-but-unsubscribed users
-    to `/pricing`. This is a UX convenience only -- the backend never
-    trusts it and re-checks everything itself.
-  - `/pricing` -- the $15/month subscribe page; "Subscribe" creates a
-    Stripe Checkout session and redirects there. A "Manage billing" link
-    in the main app opens the Stripe Customer Portal (cancel, update
-    card, view invoices) via a generated portal session.
+    recommends resource-based checks over route-matcher middleware.
+    `SubscriptionGate` (wraps the main page) only redirects signed-out
+    users to `/sign-in`; billing/trial status is exposed via
+    `BillingContext` instead of a hard redirect, so a user who's used up
+    their free trial can still browse the app -- generating a narrative
+    is what's blocked, with an inline prompt to subscribe. This is a UX
+    convenience only -- the backend never trusts it and re-checks
+    everything itself.
+  - `/pricing` -- monthly ($29) vs. annual ($290, two months free) plan
+    picker; "Subscribe" creates a Stripe Checkout session for the chosen
+    plan and redirects there. A "Manage billing" link in the main app
+    (shown once subscribed) opens the Stripe Customer Portal (cancel,
+    update card, view invoices) via a generated portal session.
 
 ## Accounts you'll need
 
@@ -150,14 +164,22 @@ been run against real data, not just synthetic samples.
 - **Clerk** (clerk.com) -- free tier is enough to start. Create an
   application, grab the publishable + secret keys, and the Frontend API
   URL (this is `CLERK_ISSUER`).
-- **Stripe** (stripe.com) -- create a Product with a recurring $15/month
-  Price; note the Price id (`price_...`). Use test-mode keys until you're
-  ready to charge real cards.
+- **Stripe** (stripe.com) -- create a "Professional" Product with two
+  recurring Prices: $29/month and $290/year; note both Price ids
+  (`price_...`). Use test-mode keys until you're ready to charge real
+  cards.
 - **Render** (render.com) -- hosts the FastAPI backend + a managed
   Postgres database. `render.yaml` at the repo root defines both as a
   Blueprint.
 - **Vercel** (vercel.com) -- hosts the Next.js frontend. Point the
   project's Root Directory at `schedule_narrative/frontend`.
+
+## Pricing model
+
+- **Free**: 3 narratives, no credit card required.
+- **Professional**: $29/month, or $290/year (two months free vs. paying
+  monthly) -- unlimited narratives. Cancel any time via the Stripe
+  Customer Portal.
 
 ## Environment variables
 
@@ -168,10 +190,12 @@ Backend (Render, or a local `.env`/exported shell vars):
 | `ANTHROPIC_API_KEY` | yes | Claude API key |
 | `CLERK_ISSUER` | yes | Clerk dashboard -> your app -> API Keys -> "Frontend API URL" |
 | `STRIPE_SECRET_KEY` | yes | Stripe dashboard -> Developers -> API keys |
-| `STRIPE_PRICE_ID` | yes | the `price_...` id for the $15/month Price |
+| `STRIPE_PRICE_ID_MONTHLY` | yes | the `price_...` id for the $29/month Price |
+| `STRIPE_PRICE_ID_ANNUAL` | yes | the `price_...` id for the $290/year Price |
 | `STRIPE_WEBHOOK_SECRET` | yes | from the Stripe webhook endpoint you create (see below) |
 | `FRONTEND_ORIGIN` | yes | your deployed frontend URL, e.g. `https://schedule-narrative.vercel.app` (defaults to `http://localhost:3000`) |
 | `DATABASE_URL` | production only | Render sets this automatically via the Blueprint; local dev falls back to SQLite (`schedules.db`) if unset |
+| `TRIAL_NARRATIVE_LIMIT` | no | free narratives before requiring a subscription; default 3 |
 | `MAX_NARRATIVES_PER_DAY` | no | per-user daily generation cap; unset = unlimited |
 
 Frontend (Vercel, or `frontend/.env.local`):
@@ -192,7 +216,8 @@ pip install -r requirements.txt
 export ANTHROPIC_API_KEY=your-key-here
 export CLERK_ISSUER=https://your-app.clerk.accounts.dev
 export STRIPE_SECRET_KEY=sk_test_...
-export STRIPE_PRICE_ID=price_...
+export STRIPE_PRICE_ID_MONTHLY=price_...
+export STRIPE_PRICE_ID_ANNUAL=price_...
 export STRIPE_WEBHOOK_SECRET=whsec_...   # from `stripe listen`, see below
 uvicorn api:app --reload
 ```
@@ -209,12 +234,12 @@ echo "CLERK_SECRET_KEY=sk_test_..." >> .env.local
 npm run dev
 ```
 
-Then open `http://localhost:3000`. You'll be redirected to sign in, then to `/pricing` to subscribe (use a [Stripe test card](https://stripe.com/docs/testing), e.g. `4242 4242 4242 4242`), then to the tool itself. Upload a `.xer` or `.xml` file and generate a narrative -- only a `.xml` export with the Project Baseline included will show variance vs. baseline; the app tells you which case you're in right after upload.
+Then open `http://localhost:3000`. You'll be redirected to sign in, then straight to the tool -- no card needed for the first 3 narratives. Upload a `.xer` or `.xml` file and generate a narrative -- only a `.xml` export with the Project Baseline included will show variance vs. baseline; the app tells you which case you're in right after upload. After 3 narratives, generating is blocked with a prompt to visit `/pricing` and subscribe (use a [Stripe test card](https://stripe.com/docs/testing), e.g. `4242 4242 4242 4242`).
 
 ## Deploying to production
 
 1. **Clerk**: create a production instance (separate from your dev instance), get its publishable/secret keys and Frontend API URL.
-2. **Stripe**: switch to live-mode keys and create the live-mode $15/month Price (test-mode and live-mode Products/Prices are separate).
+2. **Stripe**: switch to live-mode keys and create the live-mode Professional Product with its $29/month and $290/year Prices (test-mode and live-mode Products/Prices are separate).
 3. **Render**: connect this repo, deploy via the `render.yaml` Blueprint (New -> Blueprint). Set the secret env vars listed above in the dashboard (they're marked `sync: false` in `render.yaml` so they're never committed).
 4. **Vercel**: import this repo, set the Root Directory to `schedule_narrative/frontend`, set the frontend env vars above.
 5. Set `FRONTEND_ORIGIN` on Render to your live Vercel URL, and `NEXT_PUBLIC_API_BASE_URL` on Vercel to your live Render URL.

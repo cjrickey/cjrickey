@@ -1,5 +1,6 @@
 import type {
   ApiErrorBody,
+  BillingPlan,
   BillingStatus,
   NarrativeRequest,
   NarrativeResponse,
@@ -64,10 +65,14 @@ export async function getBillingStatus(token: string): Promise<BillingStatus> {
   return res.json();
 }
 
-export async function createCheckoutSession(token: string): Promise<{ checkout_url: string }> {
+export async function createCheckoutSession(
+  token: string,
+  plan: BillingPlan,
+): Promise<{ checkout_url: string }> {
   const res = await fetch(`${API_BASE_URL}/billing/create-checkout-session`, {
     method: "POST",
-    headers: authHeaders(token),
+    headers: { "Content-Type": "application/json", ...authHeaders(token) },
+    body: JSON.stringify({ plan }),
   });
   if (!res.ok) {
     throw new Error(await parseErrorDetail(res));

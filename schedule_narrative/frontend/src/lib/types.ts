@@ -50,4 +50,10 @@ export type ApiErrorBody = {
 export type BillingStatus = {
   subscribed: boolean;
   status: string | null;
+  trial_narratives_used: number;
+  trial_narratives_limit: number;
+  trial_remaining: number;
+  can_generate: boolean;
 };
+
+export type BillingPlan = "monthly" | "annual";

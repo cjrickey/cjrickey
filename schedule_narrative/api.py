@@ -12,13 +12,15 @@ storage.py for the schema.
 Auth is per-user: the frontend signs users in via Clerk and attaches
 their session token as a bearer token; clerk_auth.require_user verifies
 it and returns the Clerk user id, which scopes every schedule and usage
-row. Both endpoints additionally require an active Stripe subscription
-(billing.require_active_subscription) -- this is a paid product, not a
-single-operator tool with a shared secret anymore.
+row. Uploading only requires being signed in (it's free); generating a
+narrative additionally requires either an active Stripe subscription or
+remaining free-trial narratives (billing.require_narrative_access) --
+this is a paid product, not a single-operator tool with a shared secret
+anymore.
 
 Usage caps are a daily per-user narrative-generation limit
 (MAX_NARRATIVES_PER_DAY) to bound Anthropic API spend on top of the
-subscription; unset means unlimited.
+trial/subscription gate; unset means unlimited.
 """
 import os
 import uuid
@@ -42,7 +44,7 @@ from filter_engine import FilterSpec, apply_filters, build_monthly_executive_pay
 from narrative_generator import generate_weekly_oac_narrative, generate_monthly_executive_narrative
 from prompt_templates import OptionalSections
 from clerk_auth import require_user
-from billing import require_active_subscription, router as billing_router
+from billing import require_narrative_access, router as billing_router
 import storage
 
 app = FastAPI(title="Schedule Narrative API")
@@ -120,7 +122,7 @@ def _sniff_file_kind(contents: bytes) -> str:
 
 
 @app.post("/schedules/upload")
-async def upload_schedule(file: UploadFile, user_id: str = Depends(require_active_subscription)):
+async def upload_schedule(file: UploadFile, user_id: str = Depends(require_user)):
     contents = await file.read()
     kind = _sniff_file_kind(contents)
     if kind == "unknown":
@@ -194,7 +196,7 @@ class NarrativeRequest(BaseModel):
 
 @app.post("/schedules/{schedule_id}/narrative")
 async def generate_narrative(
-    schedule_id: str, req: NarrativeRequest, user_id: str = Depends(require_active_subscription)
+    schedule_id: str, req: NarrativeRequest, user_id: str = Depends(require_narrative_access)
 ):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if MAX_NARRATIVES_PER_DAY is not None and storage.get_usage_count(user_id, today) >= MAX_NARRATIVES_PER_DAY:
@@ -239,8 +241,10 @@ async def generate_narrative(
     except Exception as exc:
         raise HTTPException(502, f"Narrative generation failed: {exc}") from exc
 
-    if MAX_NARRATIVES_PER_DAY is not None:
-        storage.increment_usage(user_id, today)
+    # Always tracked (not just when MAX_NARRATIVES_PER_DAY is set) -- the
+    # free trial counts lifetime narratives against this same table via
+    # storage.get_total_narrative_count().
+    storage.increment_usage(user_id, today)
 
     return {
         "narrative": narrative,

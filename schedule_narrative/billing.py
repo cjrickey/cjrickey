@@ -1,7 +1,9 @@
 """
-Stripe billing: a single $15/month subscription plan, self-serve via
-Stripe Checkout, managed (cancel/update card) via the Stripe Customer
-Portal, kept in sync with our `subscriptions` table via webhook.
+Stripe billing: a free trial (TRIAL_LIMIT narratives, no card required),
+then Professional -- $29/month or $290/year (two months free) for
+unlimited narratives. Self-serve via Stripe Checkout; managed
+(cancel/update card) via the Stripe Customer Portal; kept in sync with
+our `subscriptions` table via webhook.
 
 We never store card details ourselves -- Stripe Checkout and the
 Customer Portal are both Stripe-hosted pages, so PCI scope stays on
@@ -9,51 +11,69 @@ Stripe's side entirely.
 """
 import json
 import os
-from typing import Optional
+from typing import Literal, Optional
 
 import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel
 
 from clerk_auth import require_user
 import storage
 
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
-STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
+STRIPE_PRICE_ID_MONTHLY = os.environ.get("STRIPE_PRICE_ID_MONTHLY")
+STRIPE_PRICE_ID_ANNUAL = os.environ.get("STRIPE_PRICE_ID_ANNUAL")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")
+
+TRIAL_LIMIT = int(os.environ.get("TRIAL_NARRATIVE_LIMIT", "3"))
 
 ACTIVE_STATUSES = {"active", "trialing"}
 
 router = APIRouter(prefix="/billing")
 
 
-def require_active_subscription(user_id: str = Depends(require_user)) -> str:
-    """FastAPI dependency: 402 if the signed-in user has no active
-    subscription. Returns the user id, so an endpoint can depend on just
-    this instead of stacking require_user + a separate check."""
+def require_narrative_access(user_id: str = Depends(require_user)) -> str:
+    """FastAPI dependency: allows a signed-in user through if either they
+    have an active subscription, or they haven't used up their free trial
+    (TRIAL_LIMIT narratives, no card required) yet. 402 otherwise."""
     sub = storage.get_subscription(user_id)
-    if sub is None or sub["status"] not in ACTIVE_STATUSES:
-        raise HTTPException(402, "An active subscription is required")
-    return user_id
+    if sub is not None and sub["status"] in ACTIVE_STATUSES:
+        return user_id
+    if storage.get_total_narrative_count(user_id) < TRIAL_LIMIT:
+        return user_id
+    raise HTTPException(402, "Free trial used up -- subscribe to keep generating narratives")
 
 
 @router.get("/status")
 def billing_status(user_id: str = Depends(require_user)):
     sub = storage.get_subscription(user_id)
-    if sub is None:
-        return {"subscribed": False, "status": None}
-    return {"subscribed": sub["status"] in ACTIVE_STATUSES, "status": sub["status"]}
+    subscribed = sub is not None and sub["status"] in ACTIVE_STATUSES
+    used = storage.get_total_narrative_count(user_id)
+    return {
+        "subscribed": subscribed,
+        "status": sub["status"] if sub else None,
+        "trial_narratives_used": used,
+        "trial_narratives_limit": TRIAL_LIMIT,
+        "trial_remaining": max(TRIAL_LIMIT - used, 0),
+        "can_generate": subscribed or used < TRIAL_LIMIT,
+    }
+
+
+class CheckoutRequest(BaseModel):
+    plan: Literal["monthly", "annual"] = "monthly"
 
 
 @router.post("/create-checkout-session")
-def create_checkout_session(user_id: str = Depends(require_user)):
-    if not STRIPE_PRICE_ID:
-        raise HTTPException(500, "Server is missing STRIPE_PRICE_ID")
+def create_checkout_session(req: CheckoutRequest, user_id: str = Depends(require_user)):
+    price_id = STRIPE_PRICE_ID_ANNUAL if req.plan == "annual" else STRIPE_PRICE_ID_MONTHLY
+    if not price_id:
+        raise HTTPException(500, f"Server is missing the Stripe price id for the {req.plan} plan")
 
     existing = storage.get_subscription(user_id)
     session_kwargs = dict(
         mode="subscription",
-        line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+        line_items=[{"price": price_id, "quantity": 1}],
         client_reference_id=user_id,
         success_url=f"{FRONTEND_ORIGIN}/?checkout=success",
         cancel_url=f"{FRONTEND_ORIGIN}/pricing?checkout=cancelled",

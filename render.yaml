@@ -19,11 +19,15 @@ services:
         sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
-      - key: STRIPE_PRICE_ID
+      - key: STRIPE_PRICE_ID_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_ID_ANNUAL
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
       - key: FRONTEND_ORIGIN
+        sync: false
+      - key: TRIAL_NARRATIVE_LIMIT
         sync: false
       - key: MAX_NARRATIVES_PER_DAY
         sync: false

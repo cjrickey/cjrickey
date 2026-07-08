@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import { UploadPanel } from "@/components/UploadPanel";
 import { WbsTree } from "@/components/WbsTree";
 import { FilterPanel, DEFAULT_FILTER_STATE, type FilterState } from "@/components/FilterPanel";
 import { NarrativeOutput } from "@/components/NarrativeOutput";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
+import { useBilling } from "@/lib/BillingContext";
 import { createPortalSession, generateNarrative, uploadSchedule } from "@/lib/api";
 import type { NarrativeResponse, UploadResponse } from "@/lib/types";
 
@@ -20,6 +22,7 @@ export default function Home() {
 
 function ScheduleNarrativeApp() {
   const { getToken } = useAuth();
+  const { status: billing, refresh: refreshBilling } = useBilling();
   const [schedule, setSchedule] = useState<UploadResponse | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -75,6 +78,7 @@ function ScheduleNarrativeApp() {
         token,
       );
       setResult(res);
+      await refreshBilling();
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : "Narrative generation failed");
     } finally {
@@ -101,13 +105,24 @@ function ScheduleNarrativeApp() {
             </p>
           </div>
           <div className="flex items-center gap-4 shrink-0">
-            <button
-              type="button"
-              onClick={handleManageBilling}
-              className="text-sm text-ink-muted hover:text-oxide transition-colors"
-            >
-              Manage billing
-            </button>
+            {billing.subscribed ? (
+              <button
+                type="button"
+                onClick={handleManageBilling}
+                className="text-sm text-ink-muted hover:text-oxide transition-colors"
+              >
+                Manage billing
+              </button>
+            ) : (
+              <span className="flex items-center gap-3 text-sm">
+                <span className="text-ink-muted">
+                  Free trial &middot; {billing.trial_remaining} of {billing.trial_narratives_limit} left
+                </span>
+                <Link href="/pricing" className="text-oxide hover:brightness-110 transition-all">
+                  Upgrade
+                </Link>
+              </span>
+            )}
             <UserButton />
           </div>
         </header>
@@ -166,9 +181,18 @@ function ScheduleNarrativeApp() {
                   onChange={setFilters}
                   onSubmit={handleGenerate}
                   submitting={generating}
-                  canSubmit={Boolean(schedule)}
+                  canSubmit={Boolean(schedule) && billing.can_generate}
                   hasBaseline={schedule.has_baseline}
                 />
+                {!billing.can_generate && (
+                  <p className="mt-3 text-sm text-ink-muted">
+                    You&rsquo;ve used all {billing.trial_narratives_limit} free narratives.{" "}
+                    <Link href="/pricing" className="text-oxide hover:brightness-110 transition-all">
+                      Subscribe
+                    </Link>{" "}
+                    to keep generating.
+                  </p>
+                )}
                 {generateError && <p className="mt-3 text-sm text-oxide">{generateError}</p>}
               </div>
             </div>
