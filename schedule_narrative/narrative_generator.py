@@ -36,10 +36,11 @@ def _call_claude(system_prompt: str, payload: dict) -> str:
         model="claude-sonnet-5",
         # Sonnet 5's adaptive thinking spends part of this budget reasoning
         # before it writes anything -- on larger schedules (more activities
-        # to weigh) it can exhaust a small budget entirely while thinking,
-        # leaving zero text blocks. 600 was sized for the output text alone
-        # and didn't leave room for that.
-        max_tokens=4096,
+        # to weigh, more area groups to rank by severity) it can exhaust the
+        # budget entirely while thinking, leaving zero text blocks. Real
+        # production schedules can carry 100+ activities in a single window,
+        # well past what 4096 leaves room for on top of thinking.
+        max_tokens=16384,
         system=system_prompt,
         messages=[
             {"role": "user", "content": json.dumps(payload, indent=2)},
