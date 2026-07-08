@@ -128,8 +128,6 @@ def build_monthly_executive_payload(
             "target_finish": a.target_finish,
             "current_finish": a.actual_finish or a.planned_finish,
             "variance_days": a.variance_days,
-            "baseline_total_float_days": a.baseline_total_float_days,
-            "float_change_days": a.float_change_days,
         }
 
     most_behind = min(
@@ -145,12 +143,7 @@ def build_monthly_executive_payload(
         "critical_path_summary": {
             "critical_activity_count": len(critical),
             "most_behind_activity": (
-                {
-                    "name": most_behind.name,
-                    "float_days": most_behind.total_float_days,
-                    "baseline_total_float_days": most_behind.baseline_total_float_days,
-                    "float_change_days": most_behind.float_change_days,
-                }
+                {"name": most_behind.name, "float_days": most_behind.total_float_days}
                 if most_behind else None
             ),
         },

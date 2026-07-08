@@ -165,12 +165,11 @@ async def upload_schedule(file: UploadFile):
 
 class NarrativeSections(BaseModel):
     """Bolt-on report sections, each independently toggleable. See
-    prompt_templates.OptionalSections for what each one does and which
-    two (milestone_changes, float_changes) require a P6 Baseline."""
+    prompt_templates.OptionalSections for what each one does;
+    milestone_changes requires a P6 Baseline."""
     executive_summary: bool = False
     critical_path_narrative: bool = False
     milestone_changes: bool = False
-    float_changes: bool = False
     near_critical_discussion: bool = False
     major_schedule_risks: bool = False
     procurement_impacts: bool = False

@@ -17,7 +17,6 @@ export type NarrativeSections = {
   executive_summary: boolean;
   critical_path_narrative: boolean;
   milestone_changes: boolean; // requires a P6 Baseline in the uploaded file
-  float_changes: boolean; // requires a P6 Baseline in the uploaded file
   near_critical_discussion: boolean;
   major_schedule_risks: boolean;
   procurement_impacts: boolean;

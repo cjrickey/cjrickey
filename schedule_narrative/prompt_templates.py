@@ -13,15 +13,15 @@ description of what happened / what's planned, nothing else. When True,
 those metrics are included using the rules below.
 
 OptionalSections (below) adds bolt-on sections to either report, each
-independently toggleable. Two of them (milestone_changes, float_changes)
-only produce real output when the payload has baseline-derived fields
-(variance_days / float_change_days) populated -- i.e. a true P6 Baseline
-was in the uploaded file. Without one, the instructions tell the model
-to say so plainly rather than fabricate a comparison. The two more
-interpretive sections (major_schedule_risks, recovery_opportunities) are
-still constrained to patterns directly visible in the provided data --
-no speculation about causes, no prescriptive advice -- matching the
-"state facts, let the reader interpret" rule used everywhere else.
+independently toggleable. milestone_changes only produces real output
+when the payload has baseline-derived fields (variance_days) populated
+-- i.e. a true P6 Baseline was in the uploaded file. Without one, the
+instructions tell the model to say so plainly rather than fabricate a
+comparison. The two more interpretive sections (major_schedule_risks,
+recovery_opportunities) are still constrained to patterns directly
+visible in the provided data -- no speculation about causes, no
+prescriptive advice -- matching the "state facts, let the reader
+interpret" rule used everywhere else.
 """
 from dataclasses import dataclass
 
@@ -128,7 +128,6 @@ class OptionalSections:
     executive_summary: bool = False
     critical_path_narrative: bool = False
     milestone_changes: bool = False  # baseline-only
-    float_changes: bool = False  # baseline-only
     near_critical_discussion: bool = False
     major_schedule_risks: bool = False
     procurement_impacts: bool = False
@@ -142,7 +141,6 @@ class OptionalSections:
                 self.executive_summary,
                 self.critical_path_narrative,
                 self.milestone_changes,
-                self.float_changes,
                 self.near_critical_discussion,
                 self.major_schedule_risks,
                 self.procurement_impacts,
@@ -174,12 +172,6 @@ target and whether that's an improvement or slippage. If no milestone in the pay
 variance_days present, state plainly that no baseline-based milestone comparison is \
 available for this schedule -- never describe a non-baseline planned or forecast date as if \
 it were baseline movement.\
-""",
-    "float_changes": """\
-Add a "Float Changes" section: for activities where float_change_days is present, describe \
-which activities have gained or lost float relative to the P6 Baseline and by roughly how \
-many days. If no activity in the payload has float_change_days present, state plainly that \
-baseline float comparison is not available for this schedule.\
 """,
     "near_critical_discussion": """\
 Add a "Near-Critical Path Discussion" section: describe activities with low but positive \
