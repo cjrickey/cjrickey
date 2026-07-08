@@ -4,10 +4,10 @@ import type { ReportType } from "@/lib/types";
 
 export type FilterState = {
   reportType: ReportType;
-  lookbackDays: number;
-  lookaheadDays: number;
-  criticalOnly: boolean;
-  milestonesOnly: boolean;
+  lookbackDays: string; // kept as string, like maxFloatDays -- a number-typed
+  lookaheadDays: string; // controlled input re-renders with a stale/padded
+  criticalOnly: boolean; // string on certain edit sequences (e.g. clearing
+  milestonesOnly: boolean; // then typing a digit shows "09" instead of "9")
   maxFloatDays: string; // kept as string so the input can be legitimately empty
   includeScheduleMetrics: boolean;
   steer: string;
@@ -15,8 +15,8 @@ export type FilterState = {
 
 export const DEFAULT_FILTER_STATE: FilterState = {
   reportType: "weekly_oac",
-  lookbackDays: 7,
-  lookaheadDays: 7,
+  lookbackDays: "7",
+  lookaheadDays: "7",
   criticalOnly: false,
   milestonesOnly: false,
   maxFloatDays: "",
@@ -72,7 +72,7 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit }
               type="number"
               min={0}
               value={value.lookbackDays}
-              onChange={(e) => set("lookbackDays", Number(e.target.value))}
+              onChange={(e) => set("lookbackDays", e.target.value)}
               className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5"
             />
           </label>
@@ -82,7 +82,7 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit }
               type="number"
               min={0}
               value={value.lookaheadDays}
-              onChange={(e) => set("lookaheadDays", Number(e.target.value))}
+              onChange={(e) => set("lookaheadDays", e.target.value)}
               className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5"
             />
           </label>
