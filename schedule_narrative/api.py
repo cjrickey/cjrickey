@@ -35,6 +35,7 @@ from activity_extractor import (
 )
 from filter_engine import FilterSpec, apply_filters, build_monthly_executive_payload
 from narrative_generator import generate_weekly_oac_narrative, generate_monthly_executive_narrative
+from prompt_templates import OptionalSections
 import storage
 
 app = FastAPI(title="Schedule Narrative API")
@@ -162,6 +163,22 @@ async def upload_schedule(file: UploadFile):
     }
 
 
+class NarrativeSections(BaseModel):
+    """Bolt-on report sections, each independently toggleable. See
+    prompt_templates.OptionalSections for what each one does and which
+    two (milestone_changes, float_changes) require a P6 Baseline."""
+    executive_summary: bool = False
+    critical_path_narrative: bool = False
+    milestone_changes: bool = False
+    float_changes: bool = False
+    near_critical_discussion: bool = False
+    major_schedule_risks: bool = False
+    procurement_impacts: bool = False
+    recovery_opportunities: bool = False
+    owner_talking_points: bool = False
+    pm_talking_points: bool = False
+
+
 class NarrativeRequest(BaseModel):
     report_type: str  # "weekly_oac" | "monthly_executive"
     lookback_days: int = 7
@@ -172,6 +189,7 @@ class NarrativeRequest(BaseModel):
     max_float_days: Optional[float] = None
     include_schedule_metrics: bool = True
     steer: Optional[str] = None  # optional freeform tone instruction, narrative only
+    sections: NarrativeSections = NarrativeSections()
 
 
 @app.post("/schedules/{schedule_id}/narrative", dependencies=[Depends(require_auth)])
@@ -186,6 +204,7 @@ async def generate_narrative(schedule_id: str, req: NarrativeRequest):
 
     activities = cached["activities"]
     data_date = cached["data_date"]
+    sections = OptionalSections(**req.sections.model_dump())
 
     if req.report_type == "weekly_oac":
         spec = FilterSpec(
@@ -198,11 +217,11 @@ async def generate_narrative(schedule_id: str, req: NarrativeRequest):
             max_float_days=req.max_float_days,
         )
         payload = apply_filters(activities, data_date, spec)
-        generate = lambda: generate_weekly_oac_narrative(payload, req.include_schedule_metrics, req.steer)
+        generate = lambda: generate_weekly_oac_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     elif req.report_type == "monthly_executive":
         payload = build_monthly_executive_payload(activities, data_date, req.wbs_node_names)
-        generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer)
+        generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     else:
         raise HTTPException(400, f"Unknown report_type: {req.report_type}")

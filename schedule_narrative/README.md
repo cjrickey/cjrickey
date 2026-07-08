@@ -55,6 +55,10 @@ been run against real data, not just synthetic samples.
     baseline (scope added since baselining), or vice versa, gets
     `target_finish: null` and thus `variance_days: null` -- no invented
     numbers for unmatched scope
+  - `baseline_total_float_days` / `float_change_days` (current float
+    minus baseline float, both derived from Early/Late dates the same
+    way) are computed the same baseline-join way, for the Float Changes
+    section
 - `filter_engine.py` -- pure, deterministic filtering. No LLM involved.
   - WBS scope matches at any tree depth, with cascading parent-to-child
     selection (matches the checkbox-tree UI behavior)
@@ -63,7 +67,19 @@ been run against real data, not just synthetic samples.
 - `prompt_templates.py` -- weekly OAC + monthly executive system prompts.
   Single `include_schedule_metrics` toggle controls whether variance/float/
   critical-path language appears at all, or the narrative stays pure
-  description.
+  description. `OptionalSections` adds ten independently-toggleable
+  bolt-on sections (executive summary, critical path narrative, milestone
+  changes, float changes, near-critical path discussion, major schedule
+  risks, procurement impacts, recovery opportunities, owner talking
+  points, PM talking points). `milestone_changes`/`float_changes` only
+  produce real content when the payload has baseline-derived fields
+  populated -- otherwise the instructions tell the model to say so \
+  plainly rather than fabricate a comparison. `major_schedule_risks`/
+  `recovery_opportunities` stay constrained to patterns directly visible
+  in the provided activity data (e.g. several critical activities
+  converging in the same date window) -- no speculation about causes,
+  no prescriptive advice, matching the "state facts, let the reader
+  interpret" rule used everywhere else.
 - `narrative_generator.py` -- calls the Claude API (Sonnet) with the
   filtered payload, plus an optional `steer` freeform tone instruction.
   Requires `ANTHROPIC_API_KEY` in the environment -- not included here,
@@ -90,8 +106,11 @@ been run against real data, not just synthetic samples.
     tracked in SQLite. Unset means unlimited. Returns 429 once hit.
 - `frontend/` -- Next.js app: upload panel, cascading-checkbox WBS tree,
   filter panel (report type, lookback/lookahead, critical/milestone
-  filters, max float, metrics toggle, steering note), and a narrative
-  view with a collapsible "underlying data" panel for provenance.
+  filters, max float, metrics toggle, ten optional-section checkboxes,
+  steering note), and a narrative view with a collapsible "underlying
+  data" panel for provenance. The two baseline-only optional sections
+  (Milestone changes, Float changes) are greyed out and labeled
+  "(requires baseline)" whenever the uploaded file has no baseline.
   Verified end-to-end in a real browser against the real API. Set
   `NEXT_PUBLIC_API_TOKEN` to match the backend's `API_AUTH_TOKEN` if set.
 

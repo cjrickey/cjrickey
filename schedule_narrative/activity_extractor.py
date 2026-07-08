@@ -76,9 +76,11 @@ class Activity:
     actual_finish: Optional[str]
     planned_start: Optional[str]
     planned_finish: Optional[str]
-    target_finish: Optional[str] = None  # always the baseline/target date, regardless of status
+    target_finish: Optional[str] = None  # baseline target date; only ever set from a true P6 Baseline (XML)
     variance_days: Optional[int] = None
     is_milestone: bool = False
+    baseline_total_float_days: Optional[float] = None  # this activity's float at baseline time
+    float_change_days: Optional[float] = None  # total_float_days - baseline_total_float_days
 
     def to_dict(self) -> dict:
         return {
@@ -95,6 +97,8 @@ class Activity:
             "planned_finish": self.planned_finish,
             "target_finish": self.target_finish,
             "variance_days": self.variance_days,
+            "baseline_total_float_days": self.baseline_total_float_days,
+            "float_change_days": self.float_change_days,
         }
 
 
@@ -230,6 +234,22 @@ _XML_STATUS_MAP = {
 }
 
 
+def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
+    """Total float isn't always its own field in a P6 XML export (an
+    export-option choice); derive it from LateStartDate - EarlyStartDate
+    instead, mirroring the /8-hour-workday approximation the XER path uses.
+    Used for both the live project's activities and the baseline's."""
+    early_start = _normalize_xml_date(activity.findtext("EarlyStartDate"))
+    late_start = _normalize_xml_date(activity.findtext("LateStartDate"))
+    if not (early_start and late_start):
+        return None
+    es = parse_p6_datetime(early_start)
+    ls = parse_p6_datetime(late_start)
+    if not (es and ls):
+        return None
+    return round((ls - es).total_seconds() / 3600 / 8, 1)
+
+
 def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
     """Same Activity shape as extract_activities(), sourced from a P6 XML
     export instead of XER. If the export embeds a matching <BaselineProject>
@@ -254,12 +274,18 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
     baseline = find_matching_baseline(root, project_object_id)
 
     baseline_target_finish: dict[str, str] = {}
+    baseline_float: dict[str, float] = {}
     if baseline is not None:
         for a in baseline.findall("Activity"):
             activity_id = a.findtext("Id")
+            if not activity_id:
+                continue
             target = _normalize_xml_date(a.findtext("PlannedFinishDate"))
-            if activity_id and target:
+            if target:
                 baseline_target_finish[activity_id] = target
+            float_days = _xml_total_float_days(a)
+            if float_days is not None:
+                baseline_float[activity_id] = float_days
 
     wbs_paths = build_wbs_path_map_xml(project)
 
@@ -269,13 +295,7 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
         status = _XML_STATUS_MAP.get(raw_status, raw_status.lower().replace(" ", "_"))
 
         early_start = _normalize_xml_date(a.findtext("EarlyStartDate"))
-        late_start = _normalize_xml_date(a.findtext("LateStartDate"))
-        total_float_days = None
-        if early_start and late_start:
-            es = parse_p6_datetime(early_start)
-            ls = parse_p6_datetime(late_start)
-            if es and ls:
-                total_float_days = round((ls - es).total_seconds() / 3600 / 8, 1)
+        total_float_days = _xml_total_float_days(a)
 
         is_critical = total_float_days is not None and total_float_days <= 0
         is_milestone = a.findtext("Type") in ("Start Milestone", "Finish Milestone")
@@ -311,6 +331,11 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
             if pf and tf:
                 variance_days = (pf - tf).days
 
+        baseline_total_float_days = baseline_float.get(activity_id)
+        float_change_days = None
+        if total_float_days is not None and baseline_total_float_days is not None:
+            float_change_days = round(total_float_days - baseline_total_float_days, 1)
+
         activities.append(Activity(
             activity_id=activity_id,
             name=a.findtext("Name") or "",
@@ -325,6 +350,8 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
             planned_finish=planned_finish,
             target_finish=target_finish,
             variance_days=variance_days,
+            baseline_total_float_days=baseline_total_float_days,
+            float_change_days=float_change_days,
         ))
 
     return activities

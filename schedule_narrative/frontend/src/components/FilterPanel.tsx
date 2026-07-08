@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReportType } from "@/lib/types";
+import type { NarrativeSections, ReportType } from "@/lib/types";
 
 export type FilterState = {
   reportType: ReportType;
@@ -11,6 +11,20 @@ export type FilterState = {
   maxFloatDays: string; // kept as string so the input can be legitimately empty
   includeScheduleMetrics: boolean;
   steer: string;
+  sections: NarrativeSections;
+};
+
+const DEFAULT_SECTIONS: NarrativeSections = {
+  executive_summary: false,
+  critical_path_narrative: false,
+  milestone_changes: false,
+  float_changes: false,
+  near_critical_discussion: false,
+  major_schedule_risks: false,
+  procurement_impacts: false,
+  recovery_opportunities: false,
+  owner_talking_points: false,
+  pm_talking_points: false,
 };
 
 export const DEFAULT_FILTER_STATE: FilterState = {
@@ -22,7 +36,21 @@ export const DEFAULT_FILTER_STATE: FilterState = {
   maxFloatDays: "",
   includeScheduleMetrics: true,
   steer: "",
+  sections: DEFAULT_SECTIONS,
 };
+
+const SECTION_OPTIONS: { key: keyof NarrativeSections; label: string; requiresBaseline?: boolean }[] = [
+  { key: "executive_summary", label: "Executive summary" },
+  { key: "critical_path_narrative", label: "Critical path narrative" },
+  { key: "milestone_changes", label: "Milestone changes", requiresBaseline: true },
+  { key: "float_changes", label: "Float changes", requiresBaseline: true },
+  { key: "near_critical_discussion", label: "Near-critical path discussion" },
+  { key: "major_schedule_risks", label: "Major schedule risks" },
+  { key: "procurement_impacts", label: "Procurement impacts" },
+  { key: "recovery_opportunities", label: "Recovery opportunities" },
+  { key: "owner_talking_points", label: "Three owner talking points" },
+  { key: "pm_talking_points", label: "Three PM talking points" },
+];
 
 type FilterPanelProps = {
   value: FilterState;
@@ -30,11 +58,16 @@ type FilterPanelProps = {
   onSubmit: () => void;
   submitting: boolean;
   canSubmit: boolean;
+  hasBaseline: boolean;
 };
 
-export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit }: FilterPanelProps) {
+export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, hasBaseline }: FilterPanelProps) {
   function set<K extends keyof FilterState>(key: K, next: FilterState[K]) {
     onChange({ ...value, [key]: next });
+  }
+
+  function setSection(key: keyof NarrativeSections, checked: boolean) {
+    onChange({ ...value, sections: { ...value.sections, [key]: checked } });
   }
 
   return (
@@ -128,6 +161,34 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit }
           />
           Include schedule metrics (variance, float, critical path)
         </label>
+      </div>
+
+      <div>
+        <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Additional sections</span>
+        <div className="space-y-2">
+          {SECTION_OPTIONS.map(({ key, label, requiresBaseline }) => {
+            const disabled = requiresBaseline && !hasBaseline;
+            return (
+              <label
+                key={key}
+                className={`flex items-center gap-2 text-sm ${
+                  disabled ? "text-gray-400 dark:text-gray-600" : "text-gray-700 dark:text-gray-300"
+                }`}
+                title={disabled ? "Requires a P6 Baseline embedded in the uploaded file" : undefined}
+              >
+                <input
+                  type="checkbox"
+                  checked={value.sections[key]}
+                  disabled={disabled}
+                  onChange={(e) => setSection(key, e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-400 accent-blue-600 disabled:opacity-50"
+                />
+                {label}
+                {requiresBaseline && <span className="text-xs text-gray-400">(requires baseline)</span>}
+              </label>
+            );
+          })}
+        </div>
       </div>
 
       <label className="text-sm block">

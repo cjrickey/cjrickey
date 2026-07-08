@@ -53,6 +53,7 @@ export default function Home() {
         max_float_days: maxFloatDays,
         include_schedule_metrics: filters.includeScheduleMetrics,
         steer: filters.steer.trim() === "" ? null : filters.steer.trim(),
+        sections: filters.sections,
       });
       setResult(res);
     } catch (err) {
@@ -122,6 +123,7 @@ export default function Home() {
                   onSubmit={handleGenerate}
                   submitting={generating}
                   canSubmit={Boolean(schedule)}
+                  hasBaseline={schedule.has_baseline}
                 />
                 {generateError && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{generateError}</p>}
               </div>

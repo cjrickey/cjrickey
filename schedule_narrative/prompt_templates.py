@@ -11,7 +11,19 @@ the narrative must not mention variance days, float, "critical path,"
 "driving path," or any other CPM terminology -- it reads as plain
 description of what happened / what's planned, nothing else. When True,
 those metrics are included using the rules below.
+
+OptionalSections (below) adds bolt-on sections to either report, each
+independently toggleable. Two of them (milestone_changes, float_changes)
+only produce real output when the payload has baseline-derived fields
+(variance_days / float_change_days) populated -- i.e. a true P6 Baseline
+was in the uploaded file. Without one, the instructions tell the model
+to say so plainly rather than fabricate a comparison. The two more
+interpretive sections (major_schedule_risks, recovery_opportunities) are
+still constrained to patterns directly visible in the provided data --
+no speculation about causes, no prescriptive advice -- matching the
+"state facts, let the reader interpret" rule used everywhere else.
 """
+from dataclasses import dataclass
 
 WEEKLY_OAC_SYSTEM_PROMPT = """You are drafting the "Schedule Update" section of a weekly OAC \
 (Owner-Architect-Contractor) meeting agenda for a construction project. Audience: owner's \
@@ -63,9 +75,10 @@ happened, with no comparison to plan.\
 """
 
 
-def build_weekly_oac_prompt(include_schedule_metrics: bool) -> str:
+def build_weekly_oac_prompt(include_schedule_metrics: bool, sections: "OptionalSections | None" = None) -> str:
     instruction = METRICS_ON if include_schedule_metrics else METRICS_OFF
-    return WEEKLY_OAC_SYSTEM_PROMPT.format(metrics_instruction=instruction)
+    prompt = WEEKLY_OAC_SYSTEM_PROMPT.format(metrics_instruction=instruction)
+    return prompt + build_optional_sections_block(sections)
 
 
 MONTHLY_EXECUTIVE_SYSTEM_PROMPT = """You are drafting the schedule section of a monthly \
@@ -104,6 +117,124 @@ plan.\
 """
 
 
-def build_monthly_executive_prompt(include_schedule_metrics: bool) -> str:
+def build_monthly_executive_prompt(include_schedule_metrics: bool, sections: "OptionalSections | None" = None) -> str:
     instruction = MONTHLY_METRICS_ON if include_schedule_metrics else MONTHLY_METRICS_OFF
-    return MONTHLY_EXECUTIVE_SYSTEM_PROMPT.format(metrics_instruction=instruction)
+    prompt = MONTHLY_EXECUTIVE_SYSTEM_PROMPT.format(metrics_instruction=instruction)
+    return prompt + build_optional_sections_block(sections)
+
+
+@dataclass
+class OptionalSections:
+    executive_summary: bool = False
+    critical_path_narrative: bool = False
+    milestone_changes: bool = False  # baseline-only
+    float_changes: bool = False  # baseline-only
+    near_critical_discussion: bool = False
+    major_schedule_risks: bool = False
+    procurement_impacts: bool = False
+    recovery_opportunities: bool = False
+    owner_talking_points: bool = False
+    pm_talking_points: bool = False
+
+    def any_enabled(self) -> bool:
+        return any(
+            (
+                self.executive_summary,
+                self.critical_path_narrative,
+                self.milestone_changes,
+                self.float_changes,
+                self.near_critical_discussion,
+                self.major_schedule_risks,
+                self.procurement_impacts,
+                self.recovery_opportunities,
+                self.owner_talking_points,
+                self.pm_talking_points,
+            )
+        )
+
+
+_SECTION_INSTRUCTIONS: dict[str, str] = {
+    "executive_summary": """\
+Add an "Executive Summary" section at the very top of the narrative, before any other \
+section: 2-3 sentences giving the overall status in plain terms -- how much is complete vs. \
+upcoming, whether the critical path is holding, and any milestone-level takeaway visible in \
+the data. This previews what the rest of the narrative covers; do not introduce any fact not \
+also covered elsewhere in the narrative.\
+""",
+    "critical_path_narrative": """\
+Add a "Critical Path Narrative" section: describe which activities are currently on the \
+critical path (is_critical: true), their float status, and how they sequence in the near \
+term. Focus specifically on critical-path continuity and risk rather than repeating other \
+sections verbatim.\
+""",
+    "milestone_changes": """\
+Add a "Milestone Changes" section: for each milestone (is_milestone: true) where \
+variance_days is present and nonzero, state how many days it has moved from its P6 Baseline \
+target and whether that's an improvement or slippage. If no milestone in the payload has \
+variance_days present, state plainly that no baseline-based milestone comparison is \
+available for this schedule -- never describe a non-baseline planned or forecast date as if \
+it were baseline movement.\
+""",
+    "float_changes": """\
+Add a "Float Changes" section: for activities where float_change_days is present, describe \
+which activities have gained or lost float relative to the P6 Baseline and by roughly how \
+many days. If no activity in the payload has float_change_days present, state plainly that \
+baseline float comparison is not available for this schedule.\
+""",
+    "near_critical_discussion": """\
+Add a "Near-Critical Path Discussion" section: describe activities with low but positive \
+total_float_days (roughly 1-10 days, not already critical) that could become critical if \
+upstream work slips. Base this only on total_float_days values present in the data.\
+""",
+    "major_schedule_risks": """\
+Add a "Major Schedule Risks" section: identify only risk patterns directly visible in the \
+provided activity data -- for example, multiple critical or near-critical activities \
+converging in the same narrow date window, or a cluster of behind-plan activities in the \
+same area. Do not speculate about causes (weather, subcontractor performance, staffing, \
+etc.) and do not describe any risk not evidenced by the activity data itself.\
+""",
+    "procurement_impacts": """\
+Add a "Procurement Impacts" section: identify activities whose name or wbs_path indicates \
+procurement, fabrication, shop drawings, or delivery work (e.g. containing "Procure," "Fab," \
+"Deliver," "Submit," "Shop Drawing"), and describe their status and any effect on downstream \
+critical-path work visible in the data. If none are present among the filtered activities, \
+state that plainly.\
+""",
+    "recovery_opportunities": """\
+Add a "Recovery Opportunities" section: identify only non-critical activities with \
+meaningfully higher total_float_days in the same area/WBS as whatever is described in Major \
+Schedule Risks, that could plausibly absorb resequencing. State only which activities have \
+float available -- do not recommend specific actions (adding crews, changing means and \
+methods, expediting, etc.).\
+""",
+    "owner_talking_points": """\
+Add a "Talking Points for the Owner" section: exactly three bullet points, each one sentence, \
+written for someone who wants the bottom line -- overall status, the single most \
+consequential risk or milestone, and one thing worth asking about. Derive these only from \
+data already covered elsewhere in the narrative.\
+""",
+    "pm_talking_points": """\
+Add a "Talking Points for the PM" section: exactly three bullet points, each one sentence, \
+written for the project manager driving day-to-day execution -- specific activities or areas \
+needing near-term attention. Derive these only from data already covered elsewhere in the \
+narrative.\
+""",
+}
+
+
+def build_optional_sections_block(sections: "OptionalSections | None") -> str:
+    if sections is None or not sections.any_enabled():
+        return ""
+
+    enabled = [
+        _SECTION_INSTRUCTIONS[name]
+        for name in _SECTION_INSTRUCTIONS
+        if getattr(sections, name)
+    ]
+    preamble = (
+        "\n\nAdditionally, include the following section(s) in the narrative. The word-count "
+        "target given above applies only to the core section(s) described before this point -- "
+        "each additional section below should still be concise (roughly the length its own "
+        "instruction implies), but do not compress or drop them to fit the original target:\n\n"
+    )
+    return preamble + "\n\n".join(enabled)

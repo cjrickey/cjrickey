@@ -13,6 +13,19 @@ export type UploadResponse = {
 
 export type ReportType = "weekly_oac" | "monthly_executive";
 
+export type NarrativeSections = {
+  executive_summary: boolean;
+  critical_path_narrative: boolean;
+  milestone_changes: boolean; // requires a P6 Baseline in the uploaded file
+  float_changes: boolean; // requires a P6 Baseline in the uploaded file
+  near_critical_discussion: boolean;
+  major_schedule_risks: boolean;
+  procurement_impacts: boolean;
+  recovery_opportunities: boolean;
+  owner_talking_points: boolean;
+  pm_talking_points: boolean;
+};
+
 export type NarrativeRequest = {
   report_type: ReportType;
   lookback_days: number;
@@ -23,6 +36,7 @@ export type NarrativeRequest = {
   max_float_days: number | null;
   include_schedule_metrics: boolean;
   steer: string | null;
+  sections: NarrativeSections;
 };
 
 export type NarrativeResponse = {
