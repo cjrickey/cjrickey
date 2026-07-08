@@ -14,11 +14,7 @@ export function UploadPanel({ onUpload, uploading, error }: UploadPanelProps) {
 
   function handleFile(file: File | undefined) {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".xer")) {
-      onUpload(file); // let the API's own validation surface the error consistently
-      return;
-    }
-    onUpload(file);
+    onUpload(file); // backend sniffs XER vs XML by content, not filename -- let it validate
   }
 
   return (
@@ -41,12 +37,16 @@ export function UploadPanel({ onUpload, uploading, error }: UploadPanelProps) {
       <input
         ref={inputRef}
         type="file"
-        accept=".xer"
+        accept=".xer,.xml"
         className="hidden"
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
       <p className="text-sm text-gray-600 dark:text-gray-300">
-        {uploading ? "Uploading…" : "Drop a P6 .xer export here, or click to choose a file"}
+        {uploading ? "Uploading…" : "Drop a P6 .xer or .xml export here, or click to choose a file"}
+      </p>
+      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+        Only a .xml export with the Project Baseline included unlocks variance vs. baseline. A .xer export never
+        carries baseline data.
       </p>
       {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>

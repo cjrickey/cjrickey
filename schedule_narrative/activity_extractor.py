@@ -1,14 +1,16 @@
 """
-Turns a parsed XerFile into a flat list of activity dicts, scoped to the
-"primary" project in the file (the one matching the filename / the one
-with the most tasks -- P6 exports often carry in external linked projects
-for cross-project relationships, which must NOT be treated as part of
-this project's schedule).
+Turns a parsed XerFile (or P6 XML file) into a flat list of activity
+dicts, scoped to the "primary" project in the file (the one matching the
+filename / the one with the most tasks -- P6 exports often carry in
+external linked projects for cross-project relationships, which must NOT
+be treated as part of this project's schedule).
 """
 from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
+import xml.etree.ElementTree as ET
 
 from xer_parser import XerFile, parse_p6_datetime
 
@@ -148,23 +150,16 @@ def extract_activities(xer: XerFile, proj_id: Optional[str] = None) -> list[Acti
             planned_finish = row.get("early_end_date") or row.get("target_end_date") or None
 
         actual_finish = row.get("act_end_date") or None
-        target_finish = row.get("target_end_date") or None
 
+        # XER cannot carry a P6 Baseline -- baselines only export via XML
+        # (see xml_parser.py / extract_activities_from_xml). target_end_date
+        # here is just the live project's own Planned Dates, which drift
+        # over time and aren't a frozen snapshot; treating it as "the plan"
+        # for variance purposes was the very confusion this was built to
+        # fix. So XER uploads never produce variance_days -- only a true,
+        # embedded P6 Baseline (XML) does.
+        target_finish = None
         variance_days = None
-        if actual_finish and target_finish:
-            # completed: actual vs. target
-            af = parse_p6_datetime(actual_finish)
-            tf = parse_p6_datetime(target_finish)
-            if af and tf:
-                variance_days = (af - tf).days
-        elif planned_finish and target_finish and status != "completed":
-            # not yet finished: current forecast (early dates) vs. target --
-            # this is what lets a not-started milestone show slippage
-            # without needing a second schedule snapshot to diff against.
-            pf = parse_p6_datetime(planned_finish)
-            tf = parse_p6_datetime(target_finish)
-            if pf and tf:
-                variance_days = (pf - tf).days
 
         activities.append(Activity(
             activity_id=row.get("task_code", ""),
@@ -183,6 +178,160 @@ def extract_activities(xer: XerFile, proj_id: Optional[str] = None) -> list[Acti
         ))
 
     return activities
+
+
+def _normalize_xml_date(value: Optional[str]) -> Optional[str]:
+    """P6 XML dates are ISO-8601 ('2025-03-09T00:00:00'); normalize to the
+    same 'YYYY-MM-DD HH:MM' string convention XER uses, so every downstream
+    consumer (variance math here, filter_engine.py's date-window logic)
+    can stay format-agnostic and just call parse_p6_datetime uniformly."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return dt.strftime("%Y-%m-%d %H:%M")
+
+
+def build_wbs_path_map_xml(project: ET.Element) -> dict[str, str]:
+    """ObjectId -> full path string, walking WBS elements that are direct
+    children of the given <Project> (or <BaselineProject>) element."""
+    nodes = {wbs.findtext("ObjectId"): wbs for wbs in project.findall("WBS")}
+    path_cache: dict[str, str] = {}
+
+    def resolve(object_id: str, _seen: Optional[set] = None) -> str:
+        if object_id in path_cache:
+            return path_cache[object_id]
+        if _seen is None:
+            _seen = set()
+        if object_id in _seen or object_id not in nodes:
+            return ""
+        _seen.add(object_id)
+        node = nodes[object_id]
+        name = node.findtext("Name") or ""
+        parent_id = node.findtext("ParentObjectId")
+        if parent_id and parent_id in nodes:
+            parent_path = resolve(parent_id, _seen)
+            full = f"{parent_path} > {name}" if parent_path else name
+        else:
+            full = name
+        path_cache[object_id] = full
+        return full
+
+    return {object_id: resolve(object_id) for object_id in nodes}
+
+
+_XML_STATUS_MAP = {
+    "Completed": "completed",
+    "In Progress": "in_progress",
+    "Not Started": "not_started",
+}
+
+
+def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
+    """Same Activity shape as extract_activities(), sourced from a P6 XML
+    export instead of XER. If the export embeds a matching <BaselineProject>
+    (linked via OriginalProjectObjectId -- the true P6 Baseline set via
+    Project > Maintain/Assign Baselines, not just the live project's own
+    Planned Dates), target_finish/variance_days are computed against that
+    baseline's PlannedFinishDate, joined by activity Id (ObjectId differs
+    between the live project and its baseline copy, so Id is the only
+    stable join key). No baseline embedded -- or an activity added since
+    the baseline was taken -- means target_finish stays None, so
+    variance_days comes out None too: no invented facts.
+
+    Total float isn't always present as its own field in a P6 XML export
+    (an export-option choice); it's derived here from
+    LateStartDate - EarlyStartDate instead, mirroring the /8-hour-workday
+    approximation the XER path already uses.
+    """
+    from xml_parser import pick_primary_project, find_matching_baseline
+
+    project = pick_primary_project(root)
+    project_object_id = project.findtext("ObjectId")
+    baseline = find_matching_baseline(root, project_object_id)
+
+    baseline_target_finish: dict[str, str] = {}
+    if baseline is not None:
+        for a in baseline.findall("Activity"):
+            activity_id = a.findtext("Id")
+            target = _normalize_xml_date(a.findtext("PlannedFinishDate"))
+            if activity_id and target:
+                baseline_target_finish[activity_id] = target
+
+    wbs_paths = build_wbs_path_map_xml(project)
+
+    activities = []
+    for a in project.findall("Activity"):
+        raw_status = a.findtext("Status") or ""
+        status = _XML_STATUS_MAP.get(raw_status, raw_status.lower().replace(" ", "_"))
+
+        early_start = _normalize_xml_date(a.findtext("EarlyStartDate"))
+        late_start = _normalize_xml_date(a.findtext("LateStartDate"))
+        total_float_days = None
+        if early_start and late_start:
+            es = parse_p6_datetime(early_start)
+            ls = parse_p6_datetime(late_start)
+            if es and ls:
+                total_float_days = round((ls - es).total_seconds() / 3600 / 8, 1)
+
+        is_critical = total_float_days is not None and total_float_days <= 0
+        is_milestone = a.findtext("Type") in ("Start Milestone", "Finish Milestone")
+
+        planned_start_field = _normalize_xml_date(a.findtext("PlannedStartDate"))
+        planned_finish_field = _normalize_xml_date(a.findtext("PlannedFinishDate"))
+        early_finish = _normalize_xml_date(a.findtext("EarlyFinishDate"))
+
+        # Same completed-vs-not split as the XER path: once complete, P6's
+        # forward-pass Early dates are stale (collapsed to the data date),
+        # so Planned Dates are the meaningful ones; for anything not yet
+        # finished, Early dates are the live forecast.
+        if status == "completed":
+            planned_start = planned_start_field
+            planned_finish = planned_finish_field
+        else:
+            planned_start = early_start or planned_start_field
+            planned_finish = early_finish or planned_finish_field
+
+        activity_id = a.findtext("Id") or ""
+        actual_finish = _normalize_xml_date(a.findtext("ActualFinishDate"))
+        target_finish = baseline_target_finish.get(activity_id)
+
+        variance_days = None
+        if actual_finish and target_finish:
+            af = parse_p6_datetime(actual_finish)
+            tf = parse_p6_datetime(target_finish)
+            if af and tf:
+                variance_days = (af - tf).days
+        elif planned_finish and target_finish and status != "completed":
+            pf = parse_p6_datetime(planned_finish)
+            tf = parse_p6_datetime(target_finish)
+            if pf and tf:
+                variance_days = (pf - tf).days
+
+        activities.append(Activity(
+            activity_id=activity_id,
+            name=a.findtext("Name") or "",
+            wbs_path=wbs_paths.get(a.findtext("WBSObjectId") or "", ""),
+            status=status,
+            is_critical=is_critical,
+            is_milestone=is_milestone,
+            total_float_days=total_float_days,
+            actual_start=_normalize_xml_date(a.findtext("ActualStartDate")),
+            actual_finish=actual_finish,
+            planned_start=planned_start,
+            planned_finish=planned_finish,
+            target_finish=target_finish,
+            variance_days=variance_days,
+        ))
+
+    return activities
+
+
+def get_data_date_xml(project: ET.Element) -> Optional[datetime]:
+    return parse_p6_datetime(_normalize_xml_date(project.findtext("DataDate")))
 
 
 if __name__ == "__main__":

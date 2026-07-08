@@ -25,7 +25,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from xer_parser import parse_xer
-from activity_extractor import extract_activities, pick_primary_proj_id, get_data_date
+from xml_parser import parse_p6_xml, pick_primary_project, find_matching_baseline
+from activity_extractor import (
+    extract_activities,
+    pick_primary_proj_id,
+    get_data_date,
+    extract_activities_from_xml,
+    get_data_date_xml,
+)
 from filter_engine import FilterSpec, apply_filters, build_monthly_executive_payload
 from narrative_generator import generate_weekly_oac_narrative, generate_monthly_executive_narrative
 import storage
@@ -74,22 +81,68 @@ def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
     return [build(r) for r in roots]
 
 
+def _build_wbs_tree_xml(project) -> list[dict]:
+    """Same nested shape as _build_wbs_tree, from a P6 XML <Project>'s WBS children."""
+    nodes = {wbs.findtext("ObjectId"): wbs for wbs in project.findall("WBS")}
+    children_map: dict[str, list[str]] = {}
+    for object_id, node in nodes.items():
+        parent = node.findtext("ParentObjectId")
+        children_map.setdefault(parent, []).append(object_id)
+
+    def build(object_id: str) -> dict:
+        node = nodes[object_id]
+        child_ids = sorted(
+            children_map.get(object_id, []),
+            key=lambda x: nodes[x].findtext("SequenceNumber") or "0",
+        )
+        result = {"name": node.findtext("Name") or ""}
+        if child_ids:
+            result["children"] = [build(cid) for cid in child_ids]
+        return result
+
+    roots = [oid for oid, n in nodes.items() if n.findtext("ParentObjectId") not in nodes]
+    return [build(r) for r in roots]
+
+
+def _sniff_file_kind(contents: bytes) -> str:
+    """XER and P6 XML have no reliable file extension convention users
+    actually follow, so detect from content instead of trusting the
+    filename: XER always starts with the ERMHDR line; XML starts with an
+    XML declaration or the root element, allowing for a UTF-8 BOM."""
+    head = contents.lstrip(b"\xef\xbb\xbf")[:200].lstrip()
+    if head.startswith(b"ERMHDR"):
+        return "xer"
+    if head.startswith(b"<?xml") or head.startswith(b"<APIBusinessObjects"):
+        return "xml"
+    return "unknown"
+
+
 @app.post("/schedules/upload", dependencies=[Depends(require_auth)])
 async def upload_schedule(file: UploadFile):
-    if not file.filename.lower().endswith(".xer"):
-        raise HTTPException(400, "Only .xer files are supported")
-
     contents = await file.read()
-    tmp_path = f"/tmp/{uuid.uuid4()}.xer"
+    kind = _sniff_file_kind(contents)
+    if kind == "unknown":
+        raise HTTPException(400, "Only P6 XER or XML exports are supported")
+
+    tmp_path = f"/tmp/{uuid.uuid4()}.{kind}"
     with open(tmp_path, "wb") as f:
         f.write(contents)
 
     try:
-        xer = parse_xer(tmp_path)
-        proj_id = pick_primary_proj_id(xer)
-        data_date = get_data_date(xer, proj_id)
-        activities = extract_activities(xer, proj_id)
-        wbs_tree = _build_wbs_tree(xer, proj_id)
+        if kind == "xer":
+            xer = parse_xer(tmp_path)
+            proj_id = pick_primary_proj_id(xer)
+            data_date = get_data_date(xer, proj_id)
+            activities = extract_activities(xer, proj_id)
+            wbs_tree = _build_wbs_tree(xer, proj_id)
+            has_baseline = False
+        else:
+            xml_file = parse_p6_xml(tmp_path)
+            project = pick_primary_project(xml_file.root)
+            has_baseline = find_matching_baseline(xml_file.root, project.findtext("ObjectId")) is not None
+            data_date = get_data_date_xml(project)
+            activities = extract_activities_from_xml(xml_file.root)
+            wbs_tree = _build_wbs_tree_xml(project)
     finally:
         os.remove(tmp_path)
 
@@ -101,6 +154,11 @@ async def upload_schedule(file: UploadFile):
         "data_date": data_date.strftime("%Y-%m-%d"),
         "activity_count": len(activities),
         "wbs_tree": wbs_tree,
+        # XER never carries baseline data; XML does only if a matching
+        # BaselineProject was included at export time. The frontend uses
+        # this to tell the user upfront whether variance/narration against
+        # a real P6 Baseline will be available for this upload.
+        "has_baseline": has_baseline,
     }
 
 

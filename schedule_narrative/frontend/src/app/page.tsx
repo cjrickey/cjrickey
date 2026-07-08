@@ -66,7 +66,7 @@ export default function Home() {
         <header className="mb-8">
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-50">Schedule Narrative Generator</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Upload a P6 XER export and generate a grounded weekly OAC or monthly executive narrative.
+            Upload a P6 XER or XML export and generate a grounded weekly OAC or monthly executive narrative.
           </p>
         </header>
 
@@ -89,6 +89,18 @@ export default function Home() {
               >
                 Upload a different schedule
               </button>
+            </div>
+
+            <div
+              className={`rounded-md border px-4 py-3 text-sm ${
+                schedule.has_baseline
+                  ? "border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 text-green-800 dark:text-green-200"
+                  : "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200"
+              }`}
+            >
+              {schedule.has_baseline
+                ? "Project Baseline detected. Variance (days ahead/behind) will be included in the narrative."
+                : "No P6 Baseline found in this file. The narrative will describe activities and critical-path status, but will not include “days ahead/behind plan” variance — export a P6 XML with the Project Baseline included to unlock that."}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
