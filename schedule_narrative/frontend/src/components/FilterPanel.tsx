@@ -50,6 +50,9 @@ const SECTION_OPTIONS: { key: keyof NarrativeSections; label: string; requiresBa
   { key: "pm_talking_points", label: "Three PM talking points" },
 ];
 
+const inputClasses =
+  "w-full rounded-sm border border-rule bg-surface px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-muted focus:border-oxide outline-none transition-colors";
+
 type FilterPanelProps = {
   value: FilterState;
   onChange: (next: FilterState) => void;
@@ -69,10 +72,10 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <div>
-        <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Report type</span>
-        <div className="flex gap-2">
+        <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Report type</span>
+        <div className="flex gap-1 rounded-sm border border-rule p-0.5 w-fit">
           {(
             [
               ["weekly_oac", "Weekly OAC"],
@@ -83,10 +86,8 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
               key={type}
               type="button"
               onClick={() => set("reportType", type)}
-              className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
-                value.reportType === type
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600"
+              className={`px-3 py-1 rounded-sm text-sm transition-colors ${
+                value.reportType === type ? "bg-oxide text-white" : "text-ink-muted hover:text-ink"
               }`}
             >
               {label}
@@ -98,80 +99,78 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
       {value.reportType === "weekly_oac" && (
         <div className="flex gap-4">
           <label className="flex-1 text-sm">
-            <span className="block text-gray-700 dark:text-gray-300 mb-1">Lookback days</span>
+            <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Lookback days</span>
             <input
               type="number"
               min={0}
               value={value.lookbackDays}
               onChange={(e) => set("lookbackDays", e.target.value)}
-              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5"
+              className={`${inputClasses} font-mono`}
             />
           </label>
           <label className="flex-1 text-sm">
-            <span className="block text-gray-700 dark:text-gray-300 mb-1">Lookahead days</span>
+            <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Lookahead days</span>
             <input
               type="number"
               min={0}
               value={value.lookaheadDays}
               onChange={(e) => set("lookaheadDays", e.target.value)}
-              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5"
+              className={`${inputClasses} font-mono`}
             />
           </label>
         </div>
       )}
 
       <label className="text-sm block">
-        <span className="block text-gray-700 dark:text-gray-300 mb-1">Max float days (optional)</span>
+        <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Max float days (optional)</span>
         <input
           type="number"
           value={value.maxFloatDays}
           onChange={(e) => set("maxFloatDays", e.target.value)}
           placeholder="No limit"
-          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5"
+          className={`${inputClasses} font-mono`}
         />
       </label>
 
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+      <div className="space-y-2.5">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             checked={value.criticalOnly}
             onChange={(e) => set("criticalOnly", e.target.checked)}
-            className="h-4 w-4 rounded border-gray-400 accent-blue-600"
+            className="h-4 w-4 rounded-sm border-rule accent-oxide"
           />
           Critical activities only
         </label>
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             checked={value.milestonesOnly}
             onChange={(e) => set("milestonesOnly", e.target.checked)}
-            className="h-4 w-4 rounded border-gray-400 accent-blue-600"
+            className="h-4 w-4 rounded-sm border-rule accent-oxide"
           />
           Milestones only
         </label>
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             checked={value.includeScheduleMetrics}
             onChange={(e) => set("includeScheduleMetrics", e.target.checked)}
-            className="h-4 w-4 rounded border-gray-400 accent-blue-600"
+            className="h-4 w-4 rounded-sm border-rule accent-oxide"
           />
           Include schedule metrics (variance, float, critical path)
         </label>
       </div>
 
       <div>
-        <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Additional sections</span>
+        <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Additional sections</span>
         <div className="space-y-2">
           {SECTION_OPTIONS.map(({ key, label, requiresBaseline }) => {
             const disabled = requiresBaseline && !hasBaseline;
             return (
               <label
                 key={key}
-                className={`flex items-center gap-2 text-sm ${
-                  disabled ? "text-gray-400 dark:text-gray-600" : "text-gray-700 dark:text-gray-300"
-                }`}
+                className={`flex items-center gap-2 text-sm ${disabled ? "text-ink-muted/50" : "text-ink"}`}
                 title={disabled ? "Requires a P6 Baseline embedded in the uploaded file" : undefined}
               >
                 <input
@@ -179,10 +178,10 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
                   checked={value.sections[key]}
                   disabled={disabled}
                   onChange={(e) => setSection(key, e.target.checked)}
-                  className="h-4 w-4 rounded border-gray-400 accent-blue-600 disabled:opacity-50"
+                  className="h-4 w-4 rounded-sm border-rule accent-oxide disabled:opacity-40"
                 />
                 {label}
-                {requiresBaseline && <span className="text-xs text-gray-400">(requires baseline)</span>}
+                {requiresBaseline && <span className="text-xs text-ink-muted">requires baseline</span>}
               </label>
             );
           })}
@@ -190,13 +189,13 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
       </div>
 
       <label className="text-sm block">
-        <span className="block text-gray-700 dark:text-gray-300 mb-1">Steering note (optional)</span>
+        <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Steering note (optional)</span>
         <textarea
           value={value.steer}
           onChange={(e) => set("steer", e.target.value)}
           rows={2}
           placeholder="e.g. emphasize the exterior envelope work"
-          className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1.5"
+          className={inputClasses}
         />
       </label>
 
@@ -204,7 +203,7 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
         type="button"
         onClick={onSubmit}
         disabled={!canSubmit || submitting}
-        className="w-full rounded-md bg-blue-600 text-white py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+        className="w-full rounded-sm bg-oxide text-white py-2 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-110 transition-all"
       >
         {submitting ? "Generating…" : "Generate narrative"}
       </button>

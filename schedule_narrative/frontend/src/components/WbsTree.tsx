@@ -52,9 +52,9 @@ function WbsTreeNode({
           type="checkbox"
           checked={state === "checked"}
           onChange={(e) => onChange(toggleNode(node, checked, e.target.checked))}
-          className="h-4 w-4 rounded border-gray-400 accent-blue-600"
+          className="h-4 w-4 rounded-sm border-rule accent-oxide"
         />
-        <span className="text-sm text-gray-800 dark:text-gray-200">{node.name}</span>
+        <span className="text-sm text-ink">{node.name}</span>
       </label>
       {hasChildren && (
         <ul>

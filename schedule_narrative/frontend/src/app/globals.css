@@ -1,26 +1,69 @@
 @import "tailwindcss";
 
+/*
+  Palette grounded in the subject: drafting paper and oxide-primed steel,
+  not a generic SaaS blue. Oxide is the one accent (primary actions, active
+  state); moss/ochre are separate semantic colors for baseline-present /
+  baseline-absent, not the accent.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --paper: #f6f5f1;
+  --surface: #ffffff;
+  --ink: #1a1917;
+  --ink-muted: #6b6963;
+  --rule: #dedbd3;
+  --oxide: #a8441e;
+  --oxide-surface: #f3e3dc;
+  --moss: #4b6b3f;
+  --moss-surface: #e7ede2;
+  --ochre: #8a5a15;
+  --ochre-surface: #f2e6d2;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #171614;
+    --surface: #201f1c;
+    --ink: #ede7dd;
+    --ink-muted: #9c9993;
+    --rule: #37352f;
+    --oxide: #d97a54;
+    --oxide-surface: #3a2620;
+    --moss: #8fb37a;
+    --moss-surface: #26301f;
+    --ochre: #d9a855;
+    --ochre-surface: #382b12;
   }
 }
 
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-rule: var(--rule);
+  --color-oxide: var(--oxide);
+  --color-oxide-surface: var(--oxide-surface);
+  --color-moss: var(--moss);
+  --color-moss-surface: var(--moss-surface);
+  --color-ochre: var(--ochre);
+  --color-ochre-surface: var(--ochre-surface);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans), sans-serif;
+}
+
+::selection {
+  background: var(--oxide-surface);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--oxide);
+  outline-offset: 2px;
 }

@@ -64,23 +64,31 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <div className="mx-auto max-w-5xl px-6 py-10">
-        <header className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-50">Schedule Narrative Generator</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Upload a P6 XER or XML export and generate a grounded weekly OAC or monthly executive narrative.
+    <div className="min-h-screen">
+      <div className="mx-auto max-w-4xl px-6 py-12">
+        <header className="border-b border-rule pb-6 mb-8">
+          <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative</h1>
+          <p className="text-sm text-ink-muted mt-1">
+            Upload a P6 XER or XML export. Generate a weekly OAC or monthly executive narrative grounded strictly in
+            the schedule&rsquo;s own data.
           </p>
         </header>
 
         {!schedule ? (
           <UploadPanel onUpload={handleUpload} uploading={uploading} error={uploadError} />
         ) : (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-4 py-3">
-              <div className="text-sm text-gray-600 dark:text-gray-300">
-                Data date <span className="font-medium text-gray-900 dark:text-gray-100">{schedule.data_date}</span>{" "}
-                &middot; {schedule.activity_count} activities
+          <div className="space-y-10">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-ink">{schedule.data_date}</span>
+                <span className="text-ink-muted">{schedule.activity_count} activities</span>
+                <span
+                  className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium ${
+                    schedule.has_baseline ? "bg-moss-surface text-moss" : "bg-ochre-surface text-ochre"
+                  }`}
+                >
+                  {schedule.has_baseline ? "Baseline detected" : "No baseline"}
+                </span>
               </div>
               <button
                 type="button"
@@ -88,35 +96,33 @@ export default function Home() {
                   setSchedule(null);
                   setResult(null);
                 }}
-                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                className="text-ink-muted hover:text-oxide transition-colors"
               >
-                Upload a different schedule
+                Change schedule
               </button>
             </div>
 
-            <div
-              className={`rounded-md border px-4 py-3 text-sm ${
-                schedule.has_baseline
-                  ? "border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950 text-green-800 dark:text-green-200"
-                  : "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200"
-              }`}
-            >
-              {schedule.has_baseline
-                ? "Project Baseline detected. Variance (days ahead/behind) will be included in the narrative."
-                : "No P6 Baseline found in this file. The narrative will describe activities and critical-path status, but will not include “days ahead/behind plan” variance — export a P6 XML with the Project Baseline included to unlock that."}
-            </div>
+            {!schedule.has_baseline && (
+              <p className="-mt-6 text-xs text-ink-muted">
+                No P6 Baseline was found in this file, so the narrative won&rsquo;t include &ldquo;days ahead/behind
+                plan&rdquo; variance — only critical-path status. Export a P6 XML with the Project Baseline included
+                to unlock variance.
+              </p>
+            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4">
-                <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-                  WBS scope {checkedWbsNames.size === 0 && <span className="text-gray-400">(none selected = entire schedule)</span>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+              <div className="md:pr-8 md:border-r border-rule">
+                <h2 className="text-xs font-medium uppercase tracking-wider text-ink-muted mb-4">
+                  Scope
+                  {checkedWbsNames.size === 0 && <span className="normal-case tracking-normal"> &middot; entire schedule</span>}
                 </h2>
                 <div className="max-h-96 overflow-y-auto">
                   <WbsTree nodes={schedule.wbs_tree} checked={checkedWbsNames} onChange={setCheckedWbsNames} />
                 </div>
               </div>
 
-              <div className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4">
+              <div>
+                <h2 className="text-xs font-medium uppercase tracking-wider text-ink-muted mb-4">Report</h2>
                 <FilterPanel
                   value={filters}
                   onChange={setFilters}
@@ -125,13 +131,13 @@ export default function Home() {
                   canSubmit={Boolean(schedule)}
                   hasBaseline={schedule.has_baseline}
                 />
-                {generateError && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{generateError}</p>}
+                {generateError && <p className="mt-3 text-sm text-oxide">{generateError}</p>}
               </div>
             </div>
 
             {result && (
-              <div>
-                <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Narrative</h2>
+              <div className="border-t border-rule pt-8">
+                <h2 className="text-xs font-medium uppercase tracking-wider text-ink-muted mb-4">Narrative</h2>
                 <NarrativeOutput narrative={result.narrative} filteredPayload={result.filtered_payload} />
               </div>
             )}
