@@ -107,12 +107,19 @@ def build_monthly_executive_payload(
     activities: list[Activity],
     data_date,
     wbs_node_names: Optional[list[str]] = None,
+    lookback_days: int = 30,
 ) -> dict:
     """Monthly executive payload has a different shape than the weekly
     report: a flat list of milestones (with variance vs. target) plus a
     critical-path summary, rather than a date-windowed completed/upcoming
     split. No second schedule snapshot is used -- milestone variance is
-    current forecast (or actual) vs. this file's own target dates."""
+    current forecast (or actual) vs. this file's own target dates.
+
+    completed_this_period is the one date-windowed piece here -- named
+    activities/milestones actually finished in roughly the last month
+    relative to data_date -- so the executive summary has real names to
+    cite instead of only aggregate counts (milestones/critical_path_summary
+    cover overall status, not "what happened this period")."""
     scoped = [
         a for a in activities
         if not wbs_node_names or _matches_wbs_scope(a.wbs_path, wbs_node_names)
@@ -120,6 +127,18 @@ def build_monthly_executive_payload(
 
     milestones = [a for a in scoped if a.is_milestone]
     critical = [a for a in scoped if a.is_critical and not a.is_milestone]
+
+    period_start = data_date - timedelta(days=lookback_days)
+    completed_this_period = []
+    for a in scoped:
+        if a.status == "completed" and a.actual_finish:
+            af = parse_p6_datetime(a.actual_finish)
+            if af and period_start <= af <= data_date:
+                completed_this_period.append({
+                    "name": a.name,
+                    "is_milestone": a.is_milestone,
+                    "actual_finish": a.actual_finish,
+                })
 
     def milestone_dict(a: Activity) -> dict:
         return {
@@ -139,6 +158,8 @@ def build_monthly_executive_payload(
     return {
         "report_type": "monthly_executive",
         "data_date": data_date.strftime("%Y-%m-%d"),
+        "period_start": period_start.strftime("%Y-%m-%d"),
+        "completed_this_period": completed_this_period,
         "milestones": [milestone_dict(a) for a in milestones],
         "critical_path_summary": {
             "critical_activity_count": len(critical),

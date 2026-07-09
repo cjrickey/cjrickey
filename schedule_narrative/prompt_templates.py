@@ -49,6 +49,13 @@ dropped straight into meeting minutes.
 
 Never write raw field names or JSON-style notation in the output (e.g. "(is_critical: true)", \
 "(total_float_days: -4)") -- translate every fact into plain English prose.
+
+Never comment on the structure or completeness of the input data itself -- do not say things \
+like "the data doesn't include total float values" or "float wasn't provided." If a metric \
+count comes out zero (e.g. no critical activities), state that as a fact about the schedule \
+("no activities are currently critical this period"), never as a claim that the data is \
+missing something. The one authorized exception is noting the absence of a P6 Baseline, per \
+the variance rule above.
 """
 
 METRICS_ON = """\
@@ -97,7 +104,10 @@ weekly meetings and don't track activity-level detail -- they want milestone hea
 overall trajectory.
 
 Using only the data provided in the JSON below, write a single narrative paragraph (not \
-bulleted sections) covering milestone status this period. Do not speculate on causes for \
+bulleted sections) covering milestone status this period. completed_this_period lists the \
+specific activities and milestones actually finished between period_start and data_date -- \
+name at least the most significant of these (favor milestones, and any others that stand \
+out) rather than only giving aggregate counts. Do not speculate on causes for \
 date movement beyond what's in the data -- state variance as fact, where included per the \
 instruction below.
 
@@ -113,12 +123,22 @@ takeaway.
 
 Never write raw field names or JSON-style notation in the output (e.g. "(is_critical: true)", \
 "(total_float_days: -4)") -- translate every fact into plain English prose.
+
+Never comment on the structure or completeness of the input data itself -- do not say things \
+like "the data doesn't include total float values" or "float wasn't provided." If \
+critical_activity_count is zero, state that as a fact about the schedule ("no activities are \
+currently critical this period"), never as a claim that the data is missing something. The \
+one authorized exception is noting the absence of a P6 Baseline, per the milestone_changes \
+rule below.
 """
 
 MONTHLY_METRICS_ON = """\
-Cover any milestone whose variance_days is nonzero, stating the number of days ahead or \
+Name each milestone from the milestones list along with its status and current/target finish \
+date. Cover any milestone whose variance_days is nonzero, stating the number of days ahead or \
 behind target as a plain fact. Cover the critical_path_summary: how many activities are \
-currently critical, and name the most-behind activity with its float_days value.\
+currently critical, and name the most-behind activity with its float_days value -- if \
+critical_activity_count is 0, state plainly that no activities are currently critical this \
+period.\
 """
 
 MONTHLY_METRICS_OFF = """\
@@ -167,10 +187,11 @@ class OptionalSections:
 _SECTION_INSTRUCTIONS: dict[str, str] = {
     "executive_summary": """\
 Add an "Executive Summary" section at the very top of the narrative, before any other \
-section: 2-3 sentences giving the overall status in plain terms -- how much is complete vs. \
-upcoming, whether the critical path is holding, and any milestone-level takeaway visible in \
-the data. This previews what the rest of the narrative covers; do not introduce any fact not \
-also covered elsewhere in the narrative.\
+section: 2-3 sentences giving the overall status in plain terms -- name at least one or two \
+specific activities or milestones from completed_this_period (when present) rather than only \
+citing counts, whether the critical path is holding, and any milestone-level takeaway visible \
+in the data. This previews what the rest of the narrative covers; do not introduce any fact \
+not also covered elsewhere in the narrative.\
 """,
     "critical_path_narrative": """\
 Add a "Critical Path Narrative" section: describe which activities are currently on the \
