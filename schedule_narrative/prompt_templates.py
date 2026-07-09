@@ -65,7 +65,14 @@ the two must not be described the same way.
 
 Note variance only when variance_days is present and nonzero for a completed activity -- \
 state it as a plain fact (e.g. "finished 6 days behind plan"). Do not invent a reason for \
-the variance.\
+the variance.
+
+planned_start and planned_finish are this schedule's own current target dates, not a frozen \
+P6 Baseline, and they drift over time -- never compare them to actual_start/actual_finish \
+yourself to state or imply that an activity ran ahead of or behind plan. The only valid basis \
+for any "ahead of plan" / "behind plan" / variance claim, in any phrasing, is a non-null \
+variance_days value. When variance_days is null, describe a completed activity only as having \
+finished, and on what date -- never characterize its timing relative to when it was planned.\
 """
 
 METRICS_OFF = """\
