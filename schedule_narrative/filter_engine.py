@@ -20,9 +20,27 @@ def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
     between now and project completion. Used by the critical_path_narrative
     bolt-on section, which must always cover this in full regardless of the
     report's own lookback/lookahead window (weekly) or reporting period
-    (monthly)."""
+    (monthly).
+
+    predecessors/successors here are real P6 logic links (TASKPRED/
+    Relationship, see activity_extractor.py) -- never inferred from names
+    or date adjacency -- and restricted to links between two activities
+    that are both in this remaining critical chain, so the narrative can
+    state real sequencing ("X must finish before Y starts") instead of a
+    guess. An activity with no such link simply has empty lists; that's a
+    fact about this schedule's logic, not a gap to paper over."""
     remaining = [a for a in scoped_activities if a.is_critical and a.status != "completed"]
     remaining.sort(key=lambda a: parse_p6_datetime(a.planned_start) or datetime.max)
+    remaining_ids = {a.activity_id for a in remaining}
+    names_by_id = {a.activity_id: a.name for a in remaining}
+
+    def links(entries: list[dict]) -> list[dict]:
+        return [
+            {"name": names_by_id[e["activity_id"]], "relationship_type": e["type"]}
+            for e in entries
+            if e["activity_id"] in remaining_ids
+        ]
+
     return [
         {
             "name": a.name,
@@ -32,6 +50,8 @@ def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
             "planned_start": a.planned_start,
             "planned_finish": a.planned_finish,
             "float_days": a.total_float_days,
+            "predecessors": links(a.predecessors),
+            "successors": links(a.successors),
         }
         for a in remaining
     ]

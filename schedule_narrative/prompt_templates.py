@@ -206,15 +206,25 @@ still standing between now and project completion, and must never be trimmed to 
 falls inside the reporting period.
 
 Both subsections must read as connected narrative prose describing what the work is and how \
-it flows from one activity to the next in time -- not a list of float-status facts. Do not \
-state or restate float/criticality as its own sentence (e.g. "both activities sit at zero \
-float," "this activity has no slack") -- criticality is already established by an activity's \
-presence in this section, so spend the prose on the work itself and its timing instead. \
-Describe sequence only in terms of what the dates show (what's underway now, what follows, \
-what overlaps) -- do not assert that one activity's completion causes or triggers another \
-unless that link is directly evidenced in the data; this pipeline does not resolve predecessor \
-logic, so state timing, not invented cause and effect. Focus specifically on critical-path \
-continuity and risk rather than repeating other sections verbatim.\
+it flows from one activity to the next -- not a list of float-status facts. Do not state or \
+restate float/criticality as its own sentence (e.g. "both activities sit at zero float," "this \
+activity has no slack") -- criticality is already established by an activity's presence in this \
+section, so spend the prose on the work itself and its sequencing instead.
+
+In "Remaining Critical Path to Completion," each entry's predecessors/successors lists are \
+real P6 schedule logic (actual relationships from the file, not a guess) -- use these, and \
+only these, to state how activities connect: a "Finish to Start" link means the predecessor \
+must finish before the successor starts; "Start to Start" means they start together; "Finish \
+to Finish" means they finish together; "Start to Finish" means the predecessor's start drives \
+the successor's finish. Phrase each link according to its actual type -- do not default to \
+"leads to" or "enables" phrasing for a non-Finish-to-Start link. If an activity has no \
+predecessors/successors listed, state only that it is critical and when it's due, without \
+implying a connection to any other activity. Never assert that one activity's completion \
+triggers, causes, or enables another based on their names, order, or timing alone -- only the \
+predecessors/successors data is a valid basis for a sequencing claim.
+
+Focus specifically on critical-path continuity and risk rather than repeating other sections \
+verbatim.\
 """,
     "milestone_changes": """\
 Add a "Milestone Changes" section: for each milestone where \

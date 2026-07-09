@@ -7,12 +7,21 @@ be treated as part of this project's schedule).
 """
 from __future__ import annotations
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 import xml.etree.ElementTree as ET
 
 from xer_parser import XerFile, parse_p6_datetime
+
+# P6's internal relationship-type codes/labels, normalized to plain English
+# so both the XER and XML paths produce the same values downstream.
+XER_PRED_TYPE_MAP = {
+    "PR_FS": "Finish to Start",
+    "PR_SS": "Start to Start",
+    "PR_FF": "Finish to Finish",
+    "PR_SF": "Start to Finish",
+}
 
 
 def pick_primary_proj_id(xer: XerFile) -> str:
@@ -79,6 +88,14 @@ class Activity:
     target_finish: Optional[str] = None  # baseline target date; only ever set from a true P6 Baseline (XML)
     variance_days: Optional[int] = None
     is_milestone: bool = False
+    # Real P6 logic links -- from TASKPRED (XER) or <Relationship> (XML),
+    # never inferred from names/dates. Each entry: {"activity_id": str, "type": str}.
+    # Deliberately excluded from to_dict()/serialize() for the main
+    # completed/upcoming lists (would bloat every activity's JSON); only
+    # surfaced, filtered to critical-to-critical links, by
+    # filter_engine._remaining_critical_path for the critical path narrative.
+    predecessors: list[dict] = field(default_factory=list)
+    successors: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -105,11 +122,40 @@ STATUS_MAP = {
 }
 
 
+def _build_xer_relationships(xer: XerFile, proj_id: str) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """Real P6 logic links from TASKPRED, keyed by task_code (activity_id)
+    rather than TASK's internal task_id -- TASKPRED references task_id, so
+    this joins through a task_id -> task_code map first. Cross-project
+    predecessor links (pred_proj_id != proj_id) are dropped -- those point
+    at external/linked-project stub tasks, not real activities in this
+    schedule (see pick_primary_proj_id)."""
+    task_id_to_code = {
+        row.get("task_id"): row.get("task_code")
+        for row in xer.get("TASK")
+        if row.get("proj_id") == proj_id
+    }
+
+    predecessors: dict[str, list[dict]] = {}
+    successors: dict[str, list[dict]] = {}
+    for row in xer.get("TASKPRED"):
+        if row.get("proj_id") != proj_id or row.get("pred_proj_id") != proj_id:
+            continue
+        succ_id = task_id_to_code.get(row.get("task_id"))
+        pred_id = task_id_to_code.get(row.get("pred_task_id"))
+        if not succ_id or not pred_id:
+            continue
+        rel_type = XER_PRED_TYPE_MAP.get(row.get("pred_type"), "Finish to Start")
+        successors.setdefault(pred_id, []).append({"activity_id": succ_id, "type": rel_type})
+        predecessors.setdefault(succ_id, []).append({"activity_id": pred_id, "type": rel_type})
+    return predecessors, successors
+
+
 def extract_activities(xer: XerFile, proj_id: Optional[str] = None) -> list[Activity]:
     if proj_id is None:
         proj_id = pick_primary_proj_id(xer)
 
     wbs_paths = build_wbs_path_map(xer, proj_id)
+    predecessors_by_id, successors_by_id = _build_xer_relationships(xer, proj_id)
 
     activities = []
     for row in xer.get("TASK"):
@@ -169,8 +215,9 @@ def extract_activities(xer: XerFile, proj_id: Optional[str] = None) -> list[Acti
         target_finish = None
         variance_days = None
 
+        activity_id = row.get("task_code", "")
         activities.append(Activity(
-            activity_id=row.get("task_code", ""),
+            activity_id=activity_id,
             name=row.get("task_name", ""),
             wbs_path=wbs_paths.get(row.get("wbs_id", ""), ""),
             status=status,
@@ -183,6 +230,8 @@ def extract_activities(xer: XerFile, proj_id: Optional[str] = None) -> list[Acti
             planned_finish=planned_finish,
             target_finish=target_finish,
             variance_days=variance_days,
+            predecessors=predecessors_by_id.get(activity_id, []),
+            successors=successors_by_id.get(activity_id, []),
         ))
 
     return activities
@@ -254,6 +303,31 @@ def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
     return round((ls - es).total_seconds() / 3600 / 8)  # whole days for the narrative
 
 
+def _build_xml_relationships(project: ET.Element) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
+    """Real P6 logic links from <Relationship> elements, keyed by activity
+    Id -- relationships reference activities by ObjectId (an internal id
+    distinct from the human-readable Id used everywhere else in this
+    module), so this joins through an ObjectId -> Id map first, the same
+    pattern used for baseline linkage above."""
+    objid_to_id = {
+        a.findtext("ObjectId"): a.findtext("Id")
+        for a in project.findall("Activity")
+        if a.findtext("ObjectId") and a.findtext("Id")
+    }
+
+    predecessors: dict[str, list[dict]] = {}
+    successors: dict[str, list[dict]] = {}
+    for rel in project.findall("Relationship"):
+        pred_id = objid_to_id.get(rel.findtext("PredecessorActivityObjectId"))
+        succ_id = objid_to_id.get(rel.findtext("SuccessorActivityObjectId"))
+        if not pred_id or not succ_id:
+            continue
+        rel_type = rel.findtext("Type") or "Finish to Start"
+        successors.setdefault(pred_id, []).append({"activity_id": succ_id, "type": rel_type})
+        predecessors.setdefault(succ_id, []).append({"activity_id": pred_id, "type": rel_type})
+    return predecessors, successors
+
+
 def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
     """Same Activity shape as extract_activities(), sourced from a P6 XML
     export instead of XER. If the export embeds a matching <BaselineProject>
@@ -288,6 +362,7 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
                 baseline_target_finish[activity_id] = target
 
     wbs_paths = build_wbs_path_map_xml(project)
+    predecessors_by_id, successors_by_id = _build_xml_relationships(project)
 
     activities = []
     for a in project.findall("Activity"):
@@ -351,6 +426,8 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
             planned_finish=planned_finish,
             target_finish=target_finish,
             variance_days=variance_days,
+            predecessors=predecessors_by_id.get(activity_id, []),
+            successors=successors_by_id.get(activity_id, []),
         ))
 
     return activities
