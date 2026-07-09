@@ -13,6 +13,47 @@ from xer_parser import parse_p6_datetime
 from activity_extractor import Activity
 
 
+def _reference_date(a: Activity, which: str) -> Optional[datetime]:
+    """which is 'start' or 'finish' -- prefers the actual date (if the
+    activity has started/finished) over the planned one, since that's the
+    real date the relationship played out against."""
+    raw = (a.actual_start or a.planned_start) if which == "start" else (a.actual_finish or a.planned_finish)
+    return parse_p6_datetime(raw) if raw else None
+
+
+def _driving_predecessor_ids(a: Activity, by_id: dict[str, Activity]) -> list[tuple[str, str]]:
+    """Of a's real predecessor links, keep only the one(s) that actually
+    constrain a's own date -- approximated by matching each predecessor's
+    implied constraint date against a's own start/finish, since this
+    pipeline doesn't model lag or run a full CPM forward pass. A Finish to
+    Start or Start to Start link constrains a's start; Finish to Finish or
+    Start to Finish constrains a's finish. Ties within a day both count as
+    driving (e.g. two predecessors converging the same day)."""
+    my_start = _reference_date(a, "start")
+    my_finish = _reference_date(a, "finish")
+
+    candidates = []
+    for link in a.predecessors:
+        pred = by_id.get(link["activity_id"])
+        if pred is None:
+            continue
+        rel_type = link["type"]
+        if rel_type in ("Finish to Start", "Start to Start"):
+            target = my_start
+            ref = _reference_date(pred, "finish" if rel_type == "Finish to Start" else "start")
+        else:  # Finish to Finish, Start to Finish
+            target = my_finish
+            ref = _reference_date(pred, "finish" if rel_type == "Finish to Finish" else "start")
+        if ref is None or target is None:
+            continue
+        candidates.append((abs((target - ref).days), link["activity_id"], rel_type))
+
+    if not candidates:
+        return []
+    best_gap = min(c[0] for c in candidates)
+    return [(activity_id, rel_type) for gap, activity_id, rel_type in candidates if gap <= best_gap + 1]
+
+
 def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
     """All not-yet-completed critical activities/milestones across the
     *entire* remaining schedule -- not windowed to a report period -- in
@@ -24,22 +65,23 @@ def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
 
     predecessors/successors here are real P6 logic links (TASKPRED/
     Relationship, see activity_extractor.py) -- never inferred from names
-    or date adjacency -- and restricted to links between two activities
-    that are both in this remaining critical chain, so the narrative can
-    state real sequencing ("X must finish before Y starts") instead of a
-    guess. An activity with no such link simply has empty lists; that's a
-    fact about this schedule's logic, not a gap to paper over."""
+    or date adjacency -- narrowed to only the driving tie(s) via
+    _driving_predecessor_ids, not every logic link that happens to exist
+    between two critical activities. An activity with no driving link
+    simply has empty lists; that's a fact about this schedule's logic, not
+    a gap to paper over."""
     remaining = [a for a in scoped_activities if a.is_critical and a.status != "completed"]
     remaining.sort(key=lambda a: parse_p6_datetime(a.planned_start) or datetime.max)
-    remaining_ids = {a.activity_id for a in remaining}
-    names_by_id = {a.activity_id: a.name for a in remaining}
+    by_id = {a.activity_id: a for a in remaining}
 
-    def links(entries: list[dict]) -> list[dict]:
-        return [
-            {"name": names_by_id[e["activity_id"]], "relationship_type": e["type"]}
-            for e in entries
-            if e["activity_id"] in remaining_ids
-        ]
+    driving_preds = {a.activity_id: _driving_predecessor_ids(a, by_id) for a in remaining}
+    driving_succs: dict[str, list[tuple[str, str]]] = {a.activity_id: [] for a in remaining}
+    for succ_id, preds in driving_preds.items():
+        for pred_id, rel_type in preds:
+            driving_succs.setdefault(pred_id, []).append((succ_id, rel_type))
+
+    def named(links: list[tuple[str, str]]) -> list[dict]:
+        return [{"name": by_id[activity_id].name, "relationship_type": rel_type} for activity_id, rel_type in links]
 
     return [
         {
@@ -50,8 +92,8 @@ def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
             "planned_start": a.planned_start,
             "planned_finish": a.planned_finish,
             "float_days": a.total_float_days,
-            "predecessors": links(a.predecessors),
-            "successors": links(a.successors),
+            "predecessors": named(driving_preds.get(a.activity_id, [])),
+            "successors": named(driving_succs.get(a.activity_id, [])),
         }
         for a in remaining
     ]

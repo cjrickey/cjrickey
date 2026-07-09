@@ -47,8 +47,14 @@ Style: tactical, concise, foreman-to-owner register -- not executive summary lan
 to roughly 150-250 words total. No preamble, no "in summary" -- this gets read out loud or \
 dropped straight into meeting minutes.
 
-Never write raw field names or JSON-style notation in the output (e.g. "(is_critical: true)", \
-"(total_float_days: -4)") -- translate every fact into plain English prose.
+Format every specific date the same way throughout, e.g. "July 15, 2026" -- do not mix \
+formats (some spelled out, some as "7/15," some as "Jul. 15"). Only drop to a month-level \
+reference (e.g. "August 2026") when deliberately summarizing at that broader granularity -- \
+never as a substitute for a specific date given in the data.
+
+Never write a raw field name, JSON key, or any word joined by underscores anywhere in the \
+output -- including terms named in these instructions. Every value must be translated into \
+plain English words, separated by spaces, not underscores.
 
 Never comment on the structure or completeness of the input data itself -- do not say things \
 like "the data doesn't include total float values" or "float wasn't provided." If a metric \
@@ -60,30 +66,31 @@ the variance rule above.
 
 METRICS_ON = """\
 Within "Upcoming Next Period," order the area groups themselves by severity -- the area \
-containing the most-negative total_float_days value goes first, and so on down to areas \
-with only positive-float, non-critical work. Within each area group, mention the most \
+containing the most-negative total float value goes first, and so on down to areas with \
+only positive-float, non-critical work. Within each area group, mention the most \
 behind-schedule activity in that area first, before less urgent items in the same area.
 
-Critical path activities must be called out explicitly. When \
-total_float_days is negative, do not simply say "critical" -- state plainly that the \
-activity is running behind the schedule's driving path by roughly that many days. Negative \
-float is a materially different signal than zero float ("exactly critical, no slack") and \
-the two must not be described the same way.
+Critical path activities must be called out explicitly. When an activity's total float is \
+negative, do not simply say "critical" -- state plainly that the activity is running behind \
+the schedule's driving path by roughly that many days. Negative float is a materially \
+different signal than zero float ("exactly critical, no slack") and the two must not be \
+described the same way.
 
-Note variance only when variance_days is present and nonzero for a completed activity -- \
+Note variance only when a variance figure is given and nonzero for a completed activity -- \
 state it as a plain fact (e.g. "finished 6 days behind plan"). Do not invent a reason for \
 the variance.
 
-planned_start and planned_finish are this schedule's own current target dates, not a frozen \
-P6 Baseline, and they drift over time -- never compare them to actual_start/actual_finish \
-yourself to state or imply that an activity ran ahead of or behind plan. The only valid basis \
-for any "ahead of plan" / "behind plan" / variance claim, in any phrasing, is a non-null \
-variance_days value. When variance_days is null, describe a completed activity only as having \
-finished, and on what date -- never characterize its timing relative to when it was planned.\
+An activity's planned start and finish dates are this schedule's own current target dates, \
+not a frozen P6 Baseline, and they drift over time -- never compare them to its actual start \
+or finish yourself to state or imply that it ran ahead of or behind plan. The only valid \
+basis for any "ahead of plan" / "behind plan" / variance claim, in any phrasing, is an \
+actual, given variance figure. When none is given, describe a completed activity only as \
+having finished, and on what date -- never characterize its timing relative to when it was \
+planned.\
 """
 
 METRICS_OFF = """\
-Do not mention variance_days, total_float_days, "critical path," "driving path," or any \
+Do not mention variance, total float, "critical path," "driving path," or any \
 other scheduling-health terminology anywhere in the narrative, even where present in the \
 data. Describe only what happened and what's planned -- which activities, in which areas, \
 on which dates. Order area groups in the order they appear in the data, not by any \
@@ -104,12 +111,12 @@ weekly meetings and don't track activity-level detail -- they want milestone hea
 overall trajectory.
 
 Using only the data provided in the JSON below, write a single narrative paragraph (not \
-bulleted sections) covering milestone status this period. completed_this_period lists the \
-specific activities and milestones actually finished between period_start and data_date -- \
-name at least the most significant of these (favor milestones, and any others that stand \
-out) rather than only giving aggregate counts. Do not speculate on causes for \
-date movement beyond what's in the data -- state variance as fact, where included per the \
-instruction below.
+bulleted sections) covering milestone status this period. The list of what's completed this \
+period gives the specific activities and milestones actually finished between the reporting \
+period's start date and the schedule's data date -- name at least the most significant of \
+these (favor milestones, and any others that stand out) rather than only giving aggregate \
+counts. Do not speculate on causes for date movement beyond what's in the data -- state \
+variance as fact, where included per the instruction below.
 
 {metrics_instruction}
 
@@ -121,32 +128,37 @@ Style: executive register -- confident, plain, no jargon, no hedging language ("
 words. This will be read by people who skim, so the first sentence must stand alone as the \
 takeaway.
 
-Never write raw field names or JSON-style notation in the output (e.g. "(is_critical: true)", \
-"(total_float_days: -4)") -- translate every fact into plain English prose.
+Format every specific date the same way throughout, e.g. "July 15, 2026" -- do not mix \
+formats (some spelled out, some as "7/15," some as "Jul. 15"). Only drop to a month-level \
+reference (e.g. "August 2026") when deliberately summarizing at that broader granularity -- \
+never as a substitute for a specific date given in the data.
+
+Never write a raw field name, JSON key, or any word joined by underscores anywhere in the \
+output -- including terms named in these instructions. Every value must be translated into \
+plain English words, separated by spaces, not underscores.
 
 Never comment on the structure or completeness of the input data itself -- do not say things \
-like "the data doesn't include total float values" or "float wasn't provided." If \
-critical_activity_count is zero, state that as a fact about the schedule ("no activities are \
-currently critical this period"), never as a claim that the data is missing something. The \
-one authorized exception is noting the absence of a P6 Baseline, per the milestone_changes \
-rule below.
+like "the data doesn't include total float values" or "float wasn't provided." If no \
+activities are currently critical, state that as a fact about the schedule ("no activities \
+are currently critical this period"), never as a claim that the data is missing something. \
+The one authorized exception is noting the absence of a P6 Baseline, per the milestone \
+changes rule below.
 """
 
 MONTHLY_METRICS_ON = """\
-Name each milestone from the milestones list along with its status and current/target finish \
-date. Cover any milestone whose variance_days is nonzero, stating the number of days ahead or \
-behind target as a plain fact. Cover the critical_path_summary: how many activities are \
-currently critical, and name the most-behind activity with its float_days value -- if \
-critical_activity_count is 0, state plainly that no activities are currently critical this \
-period.\
+Name each milestone along with its status and current/target finish date. Cover any \
+milestone whose variance is given and nonzero, stating the number of days ahead or behind \
+target as a plain fact. Cover overall critical-path status: how many activities are \
+currently critical, and name the most-behind activity with how many days of float it \
+carries -- if none are currently critical, state plainly that no activities are currently \
+critical this period.\
 """
 
 MONTHLY_METRICS_OFF = """\
-Do not mention variance_days, float_days, "critical path," "driving path," or any other \
+Do not mention variance, float, "critical path," "driving path," or any other \
 scheduling-health terminology anywhere in the narrative, even where present in the data. \
-Ignore the critical_path_summary section of the JSON entirely. For each milestone, state \
-only its name, status, and current target/finish date -- no comparison to a prior date or \
-plan.\
+Ignore critical-path status entirely. For each milestone, state only its name, status, and \
+current target/finish date -- no comparison to a prior date or plan.\
 """
 
 
@@ -188,22 +200,21 @@ _SECTION_INSTRUCTIONS: dict[str, str] = {
     "executive_summary": """\
 Add an "Executive Summary" section at the very top of the narrative, before any other \
 section: 2-3 sentences giving the overall status in plain terms -- name at least one or two \
-specific activities or milestones from completed_this_period (when present) rather than only \
-citing counts, whether the critical path is holding, and any milestone-level takeaway visible \
-in the data. This previews what the rest of the narrative covers; do not introduce any fact \
-not also covered elsewhere in the narrative.\
+specific activities or milestones completed this period (when any are given) rather than \
+only citing counts, whether the critical path is holding, and any milestone-level takeaway \
+visible in the data. This previews what the rest of the narrative covers; do not introduce \
+any fact not also covered elsewhere in the narrative.\
 """,
     "critical_path_narrative": """\
 Add a "Critical Path Narrative" section with two subsections:
 
-"This Period": cover only the critical activities among completed_activities/upcoming_activities \
-(weekly) or completed_this_period/starting_this_period (monthly) -- which finished, which are \
-underway, which are due to start.
+"This Period": cover only the critical activities among what's completed or upcoming this \
+period -- which finished, which are underway, which are due to start.
 
-"Remaining Critical Path to Completion": cover remaining_critical_path in full, regardless of \
-the report's own date window -- this is the entire chain of not-yet-completed critical work \
-still standing between now and project completion, and must never be trimmed to only what \
-falls inside the reporting period.
+"Remaining Critical Path to Completion": cover the full remaining critical path data given, \
+regardless of the report's own date window -- this is the entire chain of not-yet-completed \
+critical work still standing between now and project completion, and must never be trimmed \
+to only what falls inside the reporting period.
 
 Both subsections must read as connected narrative prose describing what the work is and how \
 it flows from one activity to the next -- not a list of float-status facts. Do not state or \
@@ -211,33 +222,34 @@ restate float/criticality as its own sentence (e.g. "both activities sit at zero
 activity has no slack") -- criticality is already established by an activity's presence in this \
 section, so spend the prose on the work itself and its sequencing instead.
 
-In "Remaining Critical Path to Completion," each entry's predecessors/successors lists are \
-real P6 schedule logic (actual relationships from the file, not a guess) -- use these, and \
-only these, to state how activities connect: a "Finish to Start" link means the predecessor \
-must finish before the successor starts; "Start to Start" means they start together; "Finish \
-to Finish" means they finish together; "Start to Finish" means the predecessor's start drives \
-the successor's finish. Phrase each link according to its actual type -- do not default to \
-"leads to" or "enables" phrasing for a non-Finish-to-Start link. If an activity has no \
-predecessors/successors listed, state only that it is critical and when it's due, without \
-implying a connection to any other activity. Never assert that one activity's completion \
-triggers, causes, or enables another based on their names, order, or timing alone -- only the \
-predecessors/successors data is a valid basis for a sequencing claim.
+In "Remaining Critical Path to Completion," each entry's predecessor/successor links are the \
+real, driving P6 schedule logic ties (actual relationships from the file, already narrowed to \
+the one(s) that actually constrain that activity's date -- not every logic tie in the file) \
+-- use these, and only these, to state how activities connect: a "Finish to Start" link means \
+the predecessor must finish before the successor starts; "Start to Start" means they start \
+together; "Finish to Finish" means they finish together; "Start to Finish" means the \
+predecessor's start drives the successor's finish. Phrase each link according to its actual \
+type -- do not default to "leads to" or "enables" phrasing for a non-Finish-to-Start link. If \
+an activity has no predecessor or successor link given, state only that it is critical and \
+when it's due, without implying a connection to any other activity. Never assert that one \
+activity's completion triggers, causes, or enables another based on their names, order, or \
+timing alone -- only a given predecessor/successor link is a valid basis for a sequencing \
+claim.
 
 Focus specifically on critical-path continuity and risk rather than repeating other sections \
 verbatim.\
 """,
     "milestone_changes": """\
-Add a "Milestone Changes" section: for each milestone where \
-variance_days is present and nonzero, state how many days it has moved from its P6 Baseline \
-target and whether that's an improvement or slippage. If no milestone in the payload has \
-variance_days present, state plainly that no baseline-based milestone comparison is \
-available for this schedule -- never describe a non-baseline planned or forecast date as if \
-it were baseline movement.\
+Add a "Milestone Changes" section: for each milestone where a baseline variance figure is \
+given and nonzero, state how many days it has moved from its P6 Baseline target and whether \
+that's an improvement or slippage. If no milestone has a baseline variance figure given, \
+state plainly that no baseline-based milestone comparison is available for this schedule -- \
+never describe a non-baseline planned or forecast date as if it were baseline movement.\
 """,
     "near_critical_discussion": """\
 Add a "Near-Critical Path Discussion" section: describe activities with low but positive \
-total_float_days (roughly 1-10 days, not already critical) that could become critical if \
-upstream work slips. Base this only on total_float_days values present in the data.\
+total float (roughly 1-10 days, not already critical) that could become critical if upstream \
+work slips. Base this only on total float values given in the data.\
 """,
     "major_schedule_risks": """\
 Add a "Major Schedule Risks" section: identify only risk patterns directly visible in the \
@@ -247,7 +259,7 @@ same area. Do not speculate about causes (weather, subcontractor performance, st
 etc.) and do not describe any risk not evidenced by the activity data itself.\
 """,
     "procurement_impacts": """\
-Add a "Procurement Impacts" section: identify activities whose name or wbs_path indicates \
+Add a "Procurement Impacts" section: identify activities whose name or WBS path indicates \
 procurement, fabrication, shop drawings, or delivery work (e.g. containing "Procure," "Fab," \
 "Deliver," "Submit," "Shop Drawing"), and describe their status and any effect on downstream \
 critical-path work visible in the data. If none are present among the filtered activities, \
@@ -255,7 +267,7 @@ state that plainly.\
 """,
     "recovery_opportunities": """\
 Add a "Recovery Opportunities" section: identify only non-critical activities with \
-meaningfully higher total_float_days in the same area/WBS as whatever is described in Major \
+meaningfully higher total float in the same area/WBS as whatever is described in Major \
 Schedule Risks, that could plausibly absorb resequencing. State only which activities have \
 float available -- do not recommend specific actions (adding crews, changing means and \
 methods, expediting, etc.).\

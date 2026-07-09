@@ -7,9 +7,12 @@ Schedules and usage counts are scoped per user (owner_user_id -- the Clerk
 user id) now that this is a multi-tenant product: one user must never be
 able to load another user's uploaded schedule by guessing a schedule_id.
 
-Activity round-trips through JSON via to_dict() / Activity(**dict) -- the
-dict's keys already match the dataclass fields one-to-one, so no separate
-serialization schema is needed.
+Activity round-trips through JSON via to_storage_dict() / Activity(**dict)
+-- the dict's keys already match the dataclass fields one-to-one, so no
+separate serialization schema is needed. Uses to_storage_dict(), not
+to_dict() -- the latter omits predecessors/successors to keep the
+narrative payload lean, but storage needs the full round-trip or that
+data is gone before a narrative is ever generated.
 """
 from __future__ import annotations
 import json
@@ -90,7 +93,7 @@ def save_schedule(
                 schedule_id=schedule_id,
                 owner_user_id=owner_user_id,
                 data_date=data_date.isoformat(),
-                activities=json.dumps([a.to_dict() for a in activities]),
+                activities=json.dumps([a.to_storage_dict() for a in activities]),
                 wbs_tree=json.dumps(wbs_tree),
                 created_at=datetime.utcnow().isoformat(),
             )

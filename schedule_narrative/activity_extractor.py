@@ -114,6 +114,17 @@ class Activity:
             "variance_days": self.variance_days,
         }
 
+    def to_storage_dict(self) -> dict:
+        """Full round-trip representation for storage.py -- unlike to_dict(),
+        includes predecessors/successors. Those are left out of to_dict()
+        to keep the per-activity narrative payload lean (only
+        filter_engine._remaining_critical_path needs them, already filtered
+        down to the handful of critical activities), but storage.py persists
+        whatever this returns, so leaving them out here would silently
+        drop real P6 relationship data the moment a schedule is saved --
+        it would never reach narrative generation even on a fresh upload."""
+        return {**self.to_dict(), "predecessors": self.predecessors, "successors": self.successors}
+
 
 STATUS_MAP = {
     "TK_Complete": "completed",
