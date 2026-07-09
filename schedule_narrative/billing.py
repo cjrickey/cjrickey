@@ -28,15 +28,21 @@ FRONTEND_ORIGIN = os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")
 
 TRIAL_LIMIT = int(os.environ.get("TRIAL_NARRATIVE_LIMIT", "3"))
 
+# Clerk user ids (comma-separated) that bypass the trial/subscription gate
+# entirely -- for the app's own operator(s), not a general-purpose feature.
+ADMIN_USER_IDS = {uid.strip() for uid in os.environ.get("ADMIN_USER_IDS", "").split(",") if uid.strip()}
+
 ACTIVE_STATUSES = {"active", "trialing"}
 
 router = APIRouter(prefix="/billing")
 
 
 def require_narrative_access(user_id: str = Depends(require_user)) -> str:
-    """FastAPI dependency: allows a signed-in user through if either they
-    have an active subscription, or they haven't used up their free trial
-    (TRIAL_LIMIT narratives, no card required) yet. 402 otherwise."""
+    """FastAPI dependency: allows a signed-in user through if they're an
+    admin, have an active subscription, or haven't used up their free
+    trial (TRIAL_LIMIT narratives, no card required) yet. 402 otherwise."""
+    if user_id in ADMIN_USER_IDS:
+        return user_id
     sub = storage.get_subscription(user_id)
     if sub is not None and sub["status"] in ACTIVE_STATUSES:
         return user_id
@@ -47,6 +53,15 @@ def require_narrative_access(user_id: str = Depends(require_user)) -> str:
 
 @router.get("/status")
 def billing_status(user_id: str = Depends(require_user)):
+    if user_id in ADMIN_USER_IDS:
+        return {
+            "subscribed": True,
+            "status": "admin",
+            "trial_narratives_used": 0,
+            "trial_narratives_limit": TRIAL_LIMIT,
+            "trial_remaining": TRIAL_LIMIT,
+            "can_generate": True,
+        }
     sub = storage.get_subscription(user_id)
     subscribed = sub is not None and sub["status"] in ACTIVE_STATUSES
     used = storage.get_total_narrative_count(user_id)
