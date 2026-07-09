@@ -194,10 +194,27 @@ in the data. This previews what the rest of the narrative covers; do not introdu
 not also covered elsewhere in the narrative.\
 """,
     "critical_path_narrative": """\
-Add a "Critical Path Narrative" section: describe which activities are currently on the \
-critical path, their float status, and how they sequence in the near \
-term. Focus specifically on critical-path continuity and risk rather than repeating other \
-sections verbatim.\
+Add a "Critical Path Narrative" section with two subsections:
+
+"This Period": cover only the critical activities among completed_activities/upcoming_activities \
+(weekly) or completed_this_period/starting_this_period (monthly) -- which finished, which are \
+underway, which are due to start.
+
+"Remaining Critical Path to Completion": cover remaining_critical_path in full, regardless of \
+the report's own date window -- this is the entire chain of not-yet-completed critical work \
+still standing between now and project completion, and must never be trimmed to only what \
+falls inside the reporting period.
+
+Both subsections must read as connected narrative prose describing what the work is and how \
+it flows from one activity to the next in time -- not a list of float-status facts. Do not \
+state or restate float/criticality as its own sentence (e.g. "both activities sit at zero \
+float," "this activity has no slack") -- criticality is already established by an activity's \
+presence in this section, so spend the prose on the work itself and its timing instead. \
+Describe sequence only in terms of what the dates show (what's underway now, what follows, \
+what overlaps) -- do not assert that one activity's completion causes or triggers another \
+unless that link is directly evidenced in the data; this pipeline does not resolve predecessor \
+logic, so state timing, not invented cause and effect. Focus specifically on critical-path \
+continuity and risk rather than repeating other sections verbatim.\
 """,
     "milestone_changes": """\
 Add a "Milestone Changes" section: for each milestone where \

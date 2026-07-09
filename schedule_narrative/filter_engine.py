@@ -6,11 +6,35 @@ schedule's data date, never the system clock.
 """
 from __future__ import annotations
 from dataclasses import dataclass, asdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from xer_parser import parse_p6_datetime
 from activity_extractor import Activity
+
+
+def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
+    """All not-yet-completed critical activities/milestones across the
+    *entire* remaining schedule -- not windowed to a report period -- in
+    chronological order: the actual chain of critical work still standing
+    between now and project completion. Used by the critical_path_narrative
+    bolt-on section, which must always cover this in full regardless of the
+    report's own lookback/lookahead window (weekly) or reporting period
+    (monthly)."""
+    remaining = [a for a in scoped_activities if a.is_critical and a.status != "completed"]
+    remaining.sort(key=lambda a: parse_p6_datetime(a.planned_start) or datetime.max)
+    return [
+        {
+            "name": a.name,
+            "wbs_path": a.wbs_path,
+            "is_milestone": a.is_milestone,
+            "status": a.status,
+            "planned_start": a.planned_start,
+            "planned_finish": a.planned_finish,
+            "float_days": a.total_float_days,
+        }
+        for a in remaining
+    ]
 
 
 @dataclass
@@ -83,6 +107,15 @@ def apply_filters(
             d.pop("variance_days", None)
         return d
 
+    # Independent of critical_only/milestones_only -- those are user-set
+    # filters on the windowed completed/upcoming lists above, but the
+    # remaining critical path chain always reflects the true, whole-schedule
+    # critical path regardless of what the user chose to filter this report to.
+    scoped_for_chain = [
+        a for a in activities
+        if not spec.wbs_node_names or _matches_wbs_scope(a.wbs_path, spec.wbs_node_names)
+    ]
+
     return {
         "report_type": spec.report_type,
         "data_date": data_date.strftime("%Y-%m-%d"),
@@ -100,6 +133,7 @@ def apply_filters(
         },
         "completed_activities": [serialize(a) for a in completed],
         "upcoming_activities": [serialize(a) for a in upcoming],
+        "remaining_critical_path": _remaining_critical_path(scoped_for_chain),
     }
 
 
@@ -115,11 +149,13 @@ def build_monthly_executive_payload(
     split. No second schedule snapshot is used -- milestone variance is
     current forecast (or actual) vs. this file's own target dates.
 
-    completed_this_period is the one date-windowed piece here -- named
-    activities/milestones actually finished in roughly the last month
-    relative to data_date -- so the executive summary has real names to
-    cite instead of only aggregate counts (milestones/critical_path_summary
-    cover overall status, not "what happened this period")."""
+    completed_this_period / starting_this_period are the date-windowed
+    pieces here -- named activities/milestones finished or due to start in
+    roughly the last/next month relative to data_date -- so the executive
+    summary and critical_path_narrative have real names to cite instead of
+    only aggregate counts (milestones/critical_path_summary cover overall
+    status, not "what happened this period"). remaining_critical_path is
+    explicitly NOT windowed -- see _remaining_critical_path."""
     scoped = [
         a for a in activities
         if not wbs_node_names or _matches_wbs_scope(a.wbs_path, wbs_node_names)
@@ -140,7 +176,9 @@ def build_monthly_executive_payload(
     ]
 
     period_start = data_date - timedelta(days=lookback_days)
+    period_end = data_date + timedelta(days=lookback_days)
     completed_this_period = []
+    starting_this_period = []
     for a in scoped:
         if a.status == "completed" and a.actual_finish:
             af = parse_p6_datetime(a.actual_finish)
@@ -148,7 +186,17 @@ def build_monthly_executive_payload(
                 completed_this_period.append({
                     "name": a.name,
                     "is_milestone": a.is_milestone,
+                    "is_critical": a.is_critical,
                     "actual_finish": a.actual_finish,
+                })
+        elif a.status in ("not_started", "in_progress") and a.planned_start:
+            ps = parse_p6_datetime(a.planned_start)
+            if ps and data_date <= ps <= period_end:
+                starting_this_period.append({
+                    "name": a.name,
+                    "is_milestone": a.is_milestone,
+                    "is_critical": a.is_critical,
+                    "planned_start": a.planned_start,
                 })
 
     def milestone_dict(a: Activity) -> dict:
@@ -173,7 +221,9 @@ def build_monthly_executive_payload(
         "report_type": "monthly_executive",
         "data_date": data_date.strftime("%Y-%m-%d"),
         "period_start": period_start.strftime("%Y-%m-%d"),
+        "period_end": period_end.strftime("%Y-%m-%d"),
         "completed_this_period": completed_this_period,
+        "starting_this_period": starting_this_period,
         "milestones": [milestone_dict(a) for a in milestones],
         "critical_path_summary": {
             "critical_activity_count": len(critical),
@@ -184,6 +234,7 @@ def build_monthly_executive_payload(
         },
         "critical_activities": [activity_float_dict(a) for a in critical],
         "near_critical_activities": [activity_float_dict(a) for a in near_critical],
+        "remaining_critical_path": _remaining_critical_path(scoped),
     }
 
 
