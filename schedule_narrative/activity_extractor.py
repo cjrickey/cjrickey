@@ -115,6 +115,14 @@ def extract_activities(xer: XerFile, proj_id: Optional[str] = None) -> list[Acti
     for row in xer.get("TASK"):
         if row.get("proj_id") != proj_id:
             continue
+        # Level of Effort activities (e.g. "Project Management," "Site
+        # Supervision") span other activities' durations rather than
+        # representing real, sequenced work -- they carry no meaningful
+        # float/critical-path status and must never appear anywhere in a
+        # narrative, critical path callouts included. Drop them here, at
+        # the source, rather than filtering downstream.
+        if row.get("task_type") == "TT_LOE":
+            continue
 
         status = STATUS_MAP.get(row.get("status_code"), row.get("status_code"))
 
@@ -283,6 +291,12 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
 
     activities = []
     for a in project.findall("Activity"):
+        # Same exclusion as the XER path -- Level of Effort activities carry
+        # no meaningful float/critical-path status and must never appear in
+        # a narrative.
+        if a.findtext("Type") == "Level of Effort":
+            continue
+
         raw_status = a.findtext("Status") or ""
         status = _XML_STATUS_MAP.get(raw_status, raw_status.lower().replace(" ", "_"))
 
