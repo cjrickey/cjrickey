@@ -242,6 +242,16 @@ async def generate_narrative(
         # ExceptionMiddleware (inside CORSMiddleware) handles it properly.
         raise HTTPException(500, "Server is missing ANTHROPIC_API_KEY")
     except Exception as exc:
+        if "credit balance is too low" in str(exc):
+            # Our Anthropic account is out of credit, not something the user
+            # did -- don't expose our billing plumbing to a paying customer,
+            # and don't burn one of their trial narratives on it (nothing was
+            # generated, so we never reach storage.increment_usage below).
+            raise HTTPException(
+                503,
+                "Narrative generation is temporarily unavailable on our end -- "
+                "this isn't something you did. Please try again in a few minutes.",
+            ) from exc
         raise HTTPException(502, f"Narrative generation failed: {exc}") from exc
 
     # Always tracked (not just when MAX_NARRATIVES_PER_DAY is set) -- the
