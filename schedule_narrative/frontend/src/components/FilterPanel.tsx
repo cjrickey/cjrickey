@@ -21,7 +21,6 @@ const DEFAULT_SECTIONS: NarrativeSections = {
   near_critical_discussion: false,
   major_schedule_risks: false,
   procurement_impacts: false,
-  recovery_opportunities: false,
   owner_talking_points: false,
   pm_talking_points: false,
 };
@@ -38,14 +37,21 @@ export const DEFAULT_FILTER_STATE: FilterState = {
   sections: DEFAULT_SECTIONS,
 };
 
+// Each report type's own sensible default date range -- applied when the
+// user switches to that type, so monthly keeps its existing ~30-day
+// default instead of inheriting whatever weekly happened to be set to.
+const REPORT_TYPE_DATE_DEFAULTS: Record<ReportType, { lookbackDays: string; lookaheadDays: string }> = {
+  weekly_oac: { lookbackDays: "7", lookaheadDays: "7" },
+  monthly_executive: { lookbackDays: "30", lookaheadDays: "30" },
+};
+
 const SECTION_OPTIONS: { key: keyof NarrativeSections; label: string; requiresBaseline?: boolean }[] = [
   { key: "executive_summary", label: "Executive summary" },
   { key: "critical_path_narrative", label: "Critical path narrative" },
   { key: "milestone_changes", label: "Milestone changes", requiresBaseline: true },
   { key: "near_critical_discussion", label: "Near-critical path discussion" },
   { key: "major_schedule_risks", label: "Major schedule risks" },
-  { key: "procurement_impacts", label: "Procurement impacts" },
-  { key: "recovery_opportunities", label: "Recovery opportunities" },
+  { key: "procurement_impacts", label: "Procurement" },
   { key: "owner_talking_points", label: "Three owner talking points" },
   { key: "pm_talking_points", label: "Three PM talking points" },
 ];
@@ -85,7 +91,7 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
             <button
               key={type}
               type="button"
-              onClick={() => set("reportType", type)}
+              onClick={() => onChange({ ...value, reportType: type, ...REPORT_TYPE_DATE_DEFAULTS[type] })}
               className={`px-3 py-1 rounded-sm text-sm transition-colors ${
                 value.reportType === type ? "bg-oxide text-white" : "text-ink-muted hover:text-ink"
               }`}
@@ -96,30 +102,28 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
         </div>
       </div>
 
-      {value.reportType === "weekly_oac" && (
-        <div className="flex gap-4">
-          <label className="flex-1 text-sm">
-            <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Lookback days</span>
-            <input
-              type="number"
-              min={0}
-              value={value.lookbackDays}
-              onChange={(e) => set("lookbackDays", e.target.value)}
-              className={`${inputClasses} font-mono`}
-            />
-          </label>
-          <label className="flex-1 text-sm">
-            <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Lookahead days</span>
-            <input
-              type="number"
-              min={0}
-              value={value.lookaheadDays}
-              onChange={(e) => set("lookaheadDays", e.target.value)}
-              className={`${inputClasses} font-mono`}
-            />
-          </label>
-        </div>
-      )}
+      <div className="flex gap-4">
+        <label className="flex-1 text-sm">
+          <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Lookback days</span>
+          <input
+            type="number"
+            min={0}
+            value={value.lookbackDays}
+            onChange={(e) => set("lookbackDays", e.target.value)}
+            className={`${inputClasses} font-mono`}
+          />
+        </label>
+        <label className="flex-1 text-sm">
+          <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Lookahead days</span>
+          <input
+            type="number"
+            min={0}
+            value={value.lookaheadDays}
+            onChange={(e) => set("lookaheadDays", e.target.value)}
+            className={`${inputClasses} font-mono`}
+          />
+        </label>
+      </div>
 
       <label className="text-sm block">
         <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Max float days (optional)</span>

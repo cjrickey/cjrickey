@@ -179,7 +179,6 @@ class NarrativeSections(BaseModel):
     near_critical_discussion: bool = False
     major_schedule_risks: bool = False
     procurement_impacts: bool = False
-    recovery_opportunities: bool = False
     owner_talking_points: bool = False
     pm_talking_points: bool = False
 
@@ -227,7 +226,9 @@ async def generate_narrative(
         generate = lambda: generate_weekly_oac_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     elif req.report_type == "monthly_executive":
-        payload = build_monthly_executive_payload(activities, data_date, req.wbs_node_names)
+        payload = build_monthly_executive_payload(
+            activities, data_date, req.wbs_node_names, req.lookback_days, req.lookahead_days
+        )
         generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     else:

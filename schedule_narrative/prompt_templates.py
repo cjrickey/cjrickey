@@ -17,11 +17,10 @@ independently toggleable. milestone_changes only produces real output
 when the payload has baseline-derived fields (variance_days) populated
 -- i.e. a true P6 Baseline was in the uploaded file. Without one, the
 instructions tell the model to say so plainly rather than fabricate a
-comparison. The two more interpretive sections (major_schedule_risks,
-recovery_opportunities) are still constrained to patterns directly
-visible in the provided data -- no speculation about causes, no
-prescriptive advice -- matching the "state facts, let the reader
-interpret" rule used everywhere else.
+comparison. The more interpretive major_schedule_risks section is still
+constrained to patterns directly visible in the provided data -- no
+speculation about causes, no prescriptive advice -- matching the "state
+facts, let the reader interpret" rule used everywhere else.
 """
 from dataclasses import dataclass
 
@@ -176,7 +175,6 @@ class OptionalSections:
     near_critical_discussion: bool = False
     major_schedule_risks: bool = False
     procurement_impacts: bool = False
-    recovery_opportunities: bool = False
     owner_talking_points: bool = False
     pm_talking_points: bool = False
 
@@ -189,7 +187,6 @@ class OptionalSections:
                 self.near_critical_discussion,
                 self.major_schedule_risks,
                 self.procurement_impacts,
-                self.recovery_opportunities,
                 self.owner_talking_points,
                 self.pm_talking_points,
             )
@@ -259,18 +256,11 @@ same area. Do not speculate about causes (weather, subcontractor performance, st
 etc.) and do not describe any risk not evidenced by the activity data itself.\
 """,
     "procurement_impacts": """\
-Add a "Procurement Impacts" section: identify activities whose name or WBS path indicates \
+Add a "Procurement" section: identify activities whose name or WBS path indicates \
 procurement, fabrication, shop drawings, or delivery work (e.g. containing "Procure," "Fab," \
 "Deliver," "Submit," "Shop Drawing"), and describe their status and any effect on downstream \
 critical-path work visible in the data. If none are present among the filtered activities, \
 state that plainly.\
-""",
-    "recovery_opportunities": """\
-Add a "Recovery Opportunities" section: identify only non-critical activities with \
-meaningfully higher total float in the same area/WBS as whatever is described in Major \
-Schedule Risks, that could plausibly absorb resequencing. State only which activities have \
-float available -- do not recommend specific actions (adding crews, changing means and \
-methods, expediting, etc.).\
 """,
     "owner_talking_points": """\
 Add a "Talking Points for the Owner" section: exactly three bullet points, each one sentence, \

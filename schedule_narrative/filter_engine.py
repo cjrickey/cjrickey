@@ -204,6 +204,7 @@ def build_monthly_executive_payload(
     data_date,
     wbs_node_names: Optional[list[str]] = None,
     lookback_days: int = 30,
+    lookahead_days: int = 30,
 ) -> dict:
     """Monthly executive payload has a different shape than the weekly
     report: a flat list of milestones (with variance vs. target) plus a
@@ -238,7 +239,7 @@ def build_monthly_executive_payload(
     ]
 
     period_start = data_date - timedelta(days=lookback_days)
-    period_end = data_date + timedelta(days=lookback_days)
+    period_end = data_date + timedelta(days=lookahead_days)
     completed_this_period = []
     starting_this_period = []
     for a in scoped:

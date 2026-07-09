@@ -20,7 +20,6 @@ export type NarrativeSections = {
   near_critical_discussion: boolean;
   major_schedule_risks: boolean;
   procurement_impacts: boolean;
-  recovery_opportunities: boolean;
   owner_talking_points: boolean;
   pm_talking_points: boolean;
 };

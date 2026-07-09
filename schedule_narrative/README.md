@@ -65,21 +65,20 @@ been run against real data, not just synthetic samples.
 - `prompt_templates.py` -- weekly OAC + monthly executive system prompts.
   Single `include_schedule_metrics` toggle controls whether variance/float/
   critical-path language appears at all, or the narrative stays pure
-  description. `OptionalSections` adds nine independently-toggleable
+  description. `OptionalSections` adds eight independently-toggleable
   bolt-on sections (executive summary, critical path narrative, milestone
   changes, near-critical path discussion, major schedule risks,
-  procurement impacts, recovery opportunities, owner talking points, PM
-  talking points). `milestone_changes` only produces real content when
-  the payload has baseline-derived fields populated -- otherwise the
-  instructions tell the model to say so plainly rather than fabricate a
-  comparison. `major_schedule_risks`/`recovery_opportunities` stay
+  procurement, owner talking points, PM talking points). `milestone_changes`
+  only produces real content when the payload has baseline-derived fields
+  populated -- otherwise the instructions tell the model to say so plainly
+  rather than fabricate a comparison. `major_schedule_risks` stays
   constrained to patterns directly visible in the provided activity data
   (e.g. several critical activities converging in the same date window)
   -- no speculation about causes, no prescriptive advice, matching the
   "state facts, let the reader interpret" rule used everywhere else.
-  (A tenth section, float changes, was built and then removed -- too
-  confusing in practice, and total_float_days already covers the
-  present-day float picture.)
+  (A recovery-opportunities section and a float-changes section were both
+  built and then removed -- too confusing in practice, and total_float_days
+  already covers the present-day float picture.)
 - `narrative_generator.py` -- calls the Claude API (Sonnet) with the
   filtered payload, plus an optional `steer` freeform tone instruction.
   Requires `ANTHROPIC_API_KEY` in the environment -- not included here,
