@@ -34,4 +34,4 @@ services:
 
 databases:
   - name: schedule-narrative-db
-    plan: starter
+    plan: basic-256mb
