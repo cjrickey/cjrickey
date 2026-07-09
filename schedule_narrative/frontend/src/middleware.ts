@@ -1,7 +1,10 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
-// Next.js 16 renamed the `middleware.ts` file convention to `proxy.ts`
-// (only the filename/export shape matter, not the function's name).
+// Next.js 16 renamed this file's convention to `proxy.ts`, but Vercel's
+// production request routing didn't yet invoke it correctly (build
+// succeeded, every route 404'd in production) -- reverted to the older
+// `middleware.ts` convention, which Next.js explicitly kept working
+// (deprecated, not removed) for exactly this kind of platform gap.
 //
 // This just makes Clerk's session available on every request; it does
 // NOT gate access -- Clerk deprecated route-matcher-based protection here
