@@ -127,6 +127,17 @@ def build_monthly_executive_payload(
 
     milestones = [a for a in scoped if a.is_milestone]
     critical = [a for a in scoped if a.is_critical and not a.is_milestone]
+    # Only populated for the optional bolt-on sections (near_critical_discussion,
+    # critical_path_narrative, etc.) that ask about individual activities --
+    # the core monthly narrative itself stays at the milestone/aggregate level
+    # described above. Without this, those sections have no per-activity float
+    # data to draw from at all for a monthly report and the model has nothing
+    # truthful to say but "no such data is present."
+    near_critical = [
+        a for a in scoped
+        if not a.is_milestone and not a.is_critical
+        and a.total_float_days is not None and 0 < a.total_float_days <= 10
+    ]
 
     period_start = data_date - timedelta(days=lookback_days)
     completed_this_period = []
@@ -155,6 +166,9 @@ def build_monthly_executive_payload(
         default=None,
     )
 
+    def activity_float_dict(a: Activity) -> dict:
+        return {"name": a.name, "wbs_path": a.wbs_path, "float_days": a.total_float_days}
+
     return {
         "report_type": "monthly_executive",
         "data_date": data_date.strftime("%Y-%m-%d"),
@@ -168,6 +182,8 @@ def build_monthly_executive_payload(
                 if most_behind else None
             ),
         },
+        "critical_activities": [activity_float_dict(a) for a in critical],
+        "near_critical_activities": [activity_float_dict(a) for a in near_critical],
     }
 
 
