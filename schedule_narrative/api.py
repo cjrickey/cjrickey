@@ -49,9 +49,12 @@ import storage
 
 app = FastAPI(title="Schedule Narrative API")
 
+_frontend_origins = os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.environ.get("FRONTEND_ORIGIN", "http://localhost:3000")],
+    # Comma-separated so apex and www variants (which browsers treat as
+    # distinct origins) can both be listed without picking one to break.
+    allow_origins=[origin.strip() for origin in _frontend_origins.split(",")],
     allow_methods=["*"],
     allow_headers=["*"],
 )
