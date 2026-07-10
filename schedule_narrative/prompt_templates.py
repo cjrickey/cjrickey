@@ -10,7 +10,14 @@ include_schedule_metrics controls a single, unified toggle: when False,
 the narrative must not mention variance days, float, "critical path,"
 "driving path," or any other CPM terminology -- it reads as plain
 description of what happened / what's planned, nothing else. When True,
-those metrics are included using the rules below.
+those metrics are included using the rules below -- except a specific
+float/day-count figure, which is never stated regardless of this
+toggle (see the float rule below): this pipeline derives float from a
+date-gap approximation on some P6 XML exports rather than reading P6's
+own computed value, so any specific number could be meaningfully off
+from what P6 itself shows. Critical/near-critical status itself (a
+sign, not a magnitude) is reliable and still narrated when this toggle
+is on.
 
 OptionalSections (below) adds bolt-on sections to either report, each
 independently toggleable. milestone_changes only produces real output
@@ -64,20 +71,28 @@ the variance rule above.
 """
 
 METRICS_ON = """\
-Within "Upcoming Next Period," order the area groups themselves by severity -- the area \
-containing the most-negative total float value goes first, and so on down to areas with \
-only positive-float, non-critical work. Within each area group, mention the most \
-behind-schedule activity in that area first, before less urgent items in the same area.
+Within "Upcoming Next Period," order the area groups themselves by severity -- areas with \
+critical or more severely behind work go first, down to areas with only non-critical work \
+(the data is already ordered this way; do not state or imply a specific float figure to \
+justify the order). Within each area group, mention the most behind-schedule activity in \
+that area first, before less urgent items in the same area.
 
 Critical path activities must be called out explicitly. When an activity's total float is \
 negative, do not simply say "critical" -- state plainly that the activity is running behind \
-the schedule's driving path by roughly that many days. Negative float is a materially \
-different signal than zero float ("exactly critical, no slack") and the two must not be \
-described the same way.
+the schedule's driving path, without citing a specific number of days (see the float rule \
+below). Negative float is a materially different signal than zero float ("exactly critical, \
+no slack") and the two must not be described the same way, even without citing a number.
+
+Never state or imply a specific total float or day-count-behind figure for any activity or \
+path, anywhere in the narrative, even though float values are present in the underlying \
+data -- this pipeline can't guarantee that number matches what P6 itself would show, so only \
+the qualitative status (critical / not critical / running behind) is ever stated, never the \
+magnitude.
 
 Note variance only when a variance figure is given and nonzero for a completed activity -- \
 state it as a plain fact (e.g. "finished 6 days behind plan"). Do not invent a reason for \
-the variance.
+the variance. (Variance is a real baseline-vs-actual date comparison, not derived float, and \
+is unaffected by the float rule above.)
 
 An activity's planned start and finish dates are this schedule's own current target dates, \
 not a frozen P6 Baseline, and they drift over time -- never compare them to its actual start \
@@ -147,10 +162,12 @@ changes rule below.
 MONTHLY_METRICS_ON = """\
 Name each milestone along with its status and current/target finish date. Cover any \
 milestone whose variance is given and nonzero, stating the number of days ahead or behind \
-target as a plain fact. Cover overall critical-path status: how many activities are \
-currently critical, and name the most-behind activity with how many days of float it \
-carries -- if none are currently critical, state plainly that no activities are currently \
-critical this period.\
+target as a plain fact (variance is a real baseline-vs-actual date comparison, unaffected by \
+the float rule below). Cover overall critical-path status: how many activities are currently \
+critical, and name the most-behind activity by name -- without citing a specific float or \
+day-count figure for it, even though one is present in the data (this pipeline can't \
+guarantee that number matches what P6 itself would show) -- if none are currently critical, \
+state plainly that no activities are currently critical this period.\
 """
 
 MONTHLY_METRICS_OFF = """\
@@ -222,10 +239,13 @@ Both subsections must read as connected narrative prose describing what the work
 it flows from one activity to the next -- not a list of float-status facts. Do not state or \
 restate float/criticality as its own sentence (e.g. "both activities sit at zero float," "this \
 activity has no slack") -- criticality is already established by an activity's presence in this \
-section, so spend the prose on the work itself and its sequencing instead. The one exception: \
-it is fair to state a path's worst float value once, since that severity is the actual reason \
-one path ranks primary and another secondary (e.g. "the primary critical path is running \
-roughly 12 days behind").
+section, so spend the prose on the work itself and its sequencing instead. Never state or \
+imply a specific float or day-count-behind figure for any path or activity, even though float \
+values are present in the underlying data -- this pipeline can't guarantee that number \
+matches what P6 itself would show. The paths are already ranked primary/secondary/tertiary \
+for you; state the ranking as given without citing a number to justify it (e.g. "the primary \
+critical path" is simply the most severe of those given, not one running "roughly N days \
+behind").
 """
 
 _CRITICAL_PATH_NARRATIVE_WITH_TYPES = _CRITICAL_PATH_NARRATIVE_PREAMBLE + """
@@ -285,10 +305,12 @@ never describe a non-baseline planned or forecast date as if it were baseline mo
 """,
     "near_critical_discussion": """\
 Add a "Near-Critical Path Discussion" section: the nearest near-critical chain given (low but \
-positive total float, roughly 1-10 days, not already critical -- the closest to becoming \
-critical if upstream work slips) as one short paragraph of connected prose, the same style as \
-the critical path narrative -- not a list of float-status facts. If no near-critical chain is \
-given, state plainly that no activities are currently near-critical, without inventing one.\
+positive float, not already critical -- the closest to becoming critical if upstream work \
+slips) as one short paragraph of connected prose, the same style as the critical path \
+narrative -- not a list of float-status facts. Never state or imply a specific float or \
+day-count figure, even though one is present in the data -- this pipeline can't guarantee \
+that number matches what P6 itself would show. If no near-critical chain is given, state \
+plainly that no activities are currently near-critical, without inventing one.\
 """,
     "major_schedule_risks": """\
 Add a "Major Schedule Risks" section: identify only risk patterns directly visible in the \
