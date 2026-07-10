@@ -65,6 +65,11 @@ app.include_router(billing_router)
 _max_narratives_env = os.environ.get("MAX_NARRATIVES_PER_DAY")
 MAX_NARRATIVES_PER_DAY = int(_max_narratives_env) if _max_narratives_env else None
 
+# Generous safety ceiling, well above real-world schedules (up to ~40k
+# activities) -- exists to fail cleanly on a pathological/corrupted file
+# rather than let parsing balloon unboundedly.
+MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", "150000"))
+
 
 def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
     """Nested tree structure the frontend WBS selector consumes directly."""
@@ -136,7 +141,7 @@ async def upload_schedule(file: UploadFile, user_id: str = Depends(require_user)
     with open(tmp_path, "wb") as f:
         f.write(contents)
 
-    try:
+    def _parse():
         if kind == "xer":
             xer = parse_xer(tmp_path)
             proj_id = pick_primary_proj_id(xer)
@@ -151,11 +156,47 @@ async def upload_schedule(file: UploadFile, user_id: str = Depends(require_user)
             data_date = get_data_date_xml(project)
             activities = extract_activities_from_xml(xml_file.root)
             wbs_tree = _build_wbs_tree_xml(project)
+        return data_date, activities, wbs_tree, has_baseline
+
+    try:
+        try:
+            # A large schedule (tens of thousands of activities) can take a
+            # few real seconds to parse -- run_in_threadpool keeps that off
+            # the event loop, same reasoning as narrative generation below.
+            data_date, activities, wbs_tree, has_baseline = await run_in_threadpool(_parse)
+        except Exception as exc:
+            # A malformed/corrupted export, a truncated upload, or a file
+            # from an unsupported tool that happened to sniff as XER/XML --
+            # must never surface as a raw 500/traceback. One clean, honest
+            # reason instead, whatever actually went wrong.
+            raise HTTPException(400, f"Couldn't read this file as a P6 export: {exc}") from exc
     finally:
         os.remove(tmp_path)
 
+    if data_date is None:
+        raise HTTPException(
+            400,
+            "Couldn't determine this schedule's data date -- the export may be missing "
+            "required project information.",
+        )
+    if not activities:
+        raise HTTPException(
+            400,
+            "No activities were found in this file. It may be from a tool this app doesn't "
+            "support yet (only P6 XER and XML exports are read), or the project may be empty.",
+        )
+    if len(activities) > MAX_ACTIVITIES_PER_SCHEDULE:
+        raise HTTPException(
+            400,
+            f"This schedule has {len(activities)} activities, above the "
+            f"{MAX_ACTIVITIES_PER_SCHEDULE} we currently support in one upload. Contact us if "
+            "you need this raised.",
+        )
+
     schedule_id = str(uuid.uuid4())
-    storage.save_schedule(schedule_id, user_id, data_date, activities, wbs_tree)
+    # Also threadpooled -- JSON-serializing tens of thousands of activities
+    # plus the DB write is real, measurable synchronous work too.
+    await run_in_threadpool(storage.save_schedule, schedule_id, user_id, data_date, activities, wbs_tree)
 
     return {
         "schedule_id": schedule_id,
