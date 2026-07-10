@@ -298,16 +298,32 @@ _XML_STATUS_MAP = {
 }
 
 
+def _xml_date_gap_days(activity: ET.Element, start_tag: str, end_tag: str) -> Optional[float]:
+    start = _normalize_xml_date(activity.findtext(start_tag))
+    end = _normalize_xml_date(activity.findtext(end_tag))
+    if not (start and end):
+        return None
+    s = parse_p6_datetime(start)
+    e = parse_p6_datetime(end)
+    if not (s and e):
+        return None
+    return round((e - s).total_seconds() / 3600 / 8)  # whole days for the narrative
+
+
 def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
     """P6's XML schema carries TotalFloat as its own field (hours, same
-    convention as the XER TASK table's total_float_hr_cnt) -- read it
-    directly rather than deriving it, since deriving from
-    LateStartDate - EarlyStartDate breaks silently whenever either date
-    is missing, stale, or doesn't reflect float the way this pipeline
-    assumes (no lag/calendar modeling here, unlike P6's own calculation).
-    Falls back to the date-derived approximation only when the direct
-    field isn't present in this export. Used for both the live project's
-    activities and the baseline's."""
+    convention as the XER TASK table's total_float_hr_cnt) on some
+    exports -- read it directly when present, rather than deriving it.
+    Different P6 versions/export settings name the early/late date pair
+    differently, though: some use plain EarlyStartDate/LateStartDate,
+    others (confirmed on a real export, no TotalFloat/IsCritical/
+    EarlyStartDate/LateStartDate fields at all) only carry
+    RemainingEarlyStartDate/RemainingLateStartDate -- the correct pair
+    for an in-progress or not-started activity's float from the data
+    date forward. Tries each in order and uses the first that yields a
+    value, so an export missing one naming convention still works via
+    another. Used for both the live project's activities and the
+    baseline's."""
     raw = (activity.findtext("TotalFloat") or "").strip()
     if raw:
         try:
@@ -315,15 +331,11 @@ def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
         except ValueError:
             pass
 
-    early_start = _normalize_xml_date(activity.findtext("EarlyStartDate"))
-    late_start = _normalize_xml_date(activity.findtext("LateStartDate"))
-    if not (early_start and late_start):
-        return None
-    es = parse_p6_datetime(early_start)
-    ls = parse_p6_datetime(late_start)
-    if not (es and ls):
-        return None
-    return round((ls - es).total_seconds() / 3600 / 8)  # whole days for the narrative
+    gap = _xml_date_gap_days(activity, "RemainingEarlyStartDate", "RemainingLateStartDate")
+    if gap is not None:
+        return gap
+
+    return _xml_date_gap_days(activity, "EarlyStartDate", "LateStartDate")
 
 
 def _build_xml_relationships(project: ET.Element) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
@@ -402,7 +414,12 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
         raw_status = a.findtext("Status") or ""
         status = _XML_STATUS_MAP.get(raw_status, raw_status.lower().replace(" ", "_"))
 
-        early_start = _normalize_xml_date(a.findtext("EarlyStartDate"))
+        # EarlyStartDate isn't universal either -- some exports only carry
+        # RemainingEarlyStartDate (see _xml_total_float_days above).
+        early_start = (
+            _normalize_xml_date(a.findtext("EarlyStartDate"))
+            or _normalize_xml_date(a.findtext("RemainingEarlyStartDate"))
+        )
         total_float_days = _xml_total_float_days(a)
 
         # IsCritical is P6's own computed flag -- it reflects whatever
@@ -421,7 +438,10 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
 
         planned_start_field = _normalize_xml_date(a.findtext("PlannedStartDate"))
         planned_finish_field = _normalize_xml_date(a.findtext("PlannedFinishDate"))
-        early_finish = _normalize_xml_date(a.findtext("EarlyFinishDate"))
+        early_finish = (
+            _normalize_xml_date(a.findtext("EarlyFinishDate"))
+            or _normalize_xml_date(a.findtext("RemainingEarlyFinishDate"))
+        )
 
         # Same completed-vs-not split as the XER path: once complete, P6's
         # forward-pass Early dates are stale (collapsed to the data date),
