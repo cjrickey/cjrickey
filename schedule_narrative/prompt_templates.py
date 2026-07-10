@@ -171,6 +171,14 @@ def build_monthly_executive_prompt(include_schedule_metrics: bool, sections: "Op
 class OptionalSections:
     executive_summary: bool = False
     critical_path_narrative: bool = False
+    # Only meaningful when critical_path_narrative is on. True (the
+    # existing behavior) names the actual P6 relationship type on each
+    # driving link (e.g. "Start to Start"); False keeps the sequencing
+    # itself (still grounded in real predecessor/successor data -- see
+    # filter_engine._remaining_critical_path) but describes it in plain
+    # words like "next" instead of naming the tie, for narratives shown
+    # to an audience who shouldn't see the underlying schedule logic.
+    show_relationship_types: bool = True
     milestone_changes: bool = False  # baseline-only
     near_critical_discussion: bool = False
     major_schedule_risks: bool = False
@@ -193,16 +201,7 @@ class OptionalSections:
         )
 
 
-_SECTION_INSTRUCTIONS: dict[str, str] = {
-    "executive_summary": """\
-Add an "Executive Summary" section at the very top of the narrative, before any other \
-section: 2-3 sentences giving the overall status in plain terms -- name at least one or two \
-specific activities or milestones completed this period (when any are given) rather than \
-only citing counts, whether the critical path is holding, and any milestone-level takeaway \
-visible in the data. This previews what the rest of the narrative covers; do not introduce \
-any fact not also covered elsewhere in the narrative.\
-""",
-    "critical_path_narrative": """\
+_CRITICAL_PATH_NARRATIVE_PREAMBLE = """\
 Add a "Critical Path Narrative" section with two subsections:
 
 "This Period": cover only the critical activities among what's completed or upcoming this \
@@ -218,7 +217,9 @@ it flows from one activity to the next -- not a list of float-status facts. Do n
 restate float/criticality as its own sentence (e.g. "both activities sit at zero float," "this \
 activity has no slack") -- criticality is already established by an activity's presence in this \
 section, so spend the prose on the work itself and its sequencing instead.
+"""
 
+_CRITICAL_PATH_NARRATIVE_WITH_TYPES = _CRITICAL_PATH_NARRATIVE_PREAMBLE + """
 In "Remaining Critical Path to Completion," each entry's predecessor/successor links are the \
 real, driving P6 schedule logic ties (actual relationships from the file, already narrowed to \
 the one(s) that actually constrain that activity's date -- not every logic tie in the file) \
@@ -235,6 +236,37 @@ claim.
 
 Focus specifically on critical-path continuity and risk rather than repeating other sections \
 verbatim.\
+"""
+
+_CRITICAL_PATH_NARRATIVE_GENERIC = _CRITICAL_PATH_NARRATIVE_PREAMBLE + """
+In "Remaining Critical Path to Completion," each entry's predecessor/successor links are the \
+real, driving P6 schedule logic ties (actual relationships from the file, already narrowed to \
+the one(s) that actually constrain that activity's date -- not every logic tie in the file) \
+-- use these, and only these, as the basis for how activities connect, but never name or \
+reveal the formal relationship type (do not write "Finish to Start," "Start to Start," or any \
+similar term). Instead describe the connection in plain, ordinary sequencing language: where \
+one activity must finish before the next starts, say it "comes next" or "follows"; where two \
+activities proceed together (starting or finishing at the same time), say they run "alongside" \
+or "together with" one another. Keep the sequencing itself accurate -- concurrent work must \
+still read as concurrent, not as one-after-another -- just without naming the tie. If an \
+activity has no predecessor or successor link given, state only that it is critical and when \
+it's due, without implying a connection to any other activity. Never assert that one \
+activity's completion triggers, causes, or enables another based on their names, order, or \
+timing alone -- only a given predecessor/successor link is a valid basis for a sequencing \
+claim.
+
+Focus specifically on critical-path continuity and risk rather than repeating other sections \
+verbatim.\
+"""
+
+_SECTION_INSTRUCTIONS: dict[str, str] = {
+    "executive_summary": """\
+Add an "Executive Summary" section at the very top of the narrative, before any other \
+section: 2-3 sentences giving the overall status in plain terms -- name at least one or two \
+specific activities or milestones completed this period (when any are given) rather than \
+only citing counts, whether the critical path is holding, and any milestone-level takeaway \
+visible in the data. This previews what the rest of the narrative covers; do not introduce \
+any fact not also covered elsewhere in the narrative.\
 """,
     "milestone_changes": """\
 Add a "Milestone Changes" section: for each milestone where a baseline variance figure is \
@@ -277,15 +309,37 @@ narrative.\
 }
 
 
+# Original section order, for output stability -- critical_path_narrative
+# isn't in _SECTION_INSTRUCTIONS since its text depends on
+# show_relationship_types (see build_optional_sections_block).
+_SECTION_ORDER = [
+    "executive_summary",
+    "critical_path_narrative",
+    "milestone_changes",
+    "near_critical_discussion",
+    "major_schedule_risks",
+    "procurement_impacts",
+    "owner_talking_points",
+    "pm_talking_points",
+]
+
+
 def build_optional_sections_block(sections: "OptionalSections | None") -> str:
     if sections is None or not sections.any_enabled():
         return ""
 
-    enabled = [
-        _SECTION_INSTRUCTIONS[name]
-        for name in _SECTION_INSTRUCTIONS
-        if getattr(sections, name)
-    ]
+    enabled = []
+    for name in _SECTION_ORDER:
+        if not getattr(sections, name):
+            continue
+        if name == "critical_path_narrative":
+            enabled.append(
+                _CRITICAL_PATH_NARRATIVE_WITH_TYPES
+                if sections.show_relationship_types
+                else _CRITICAL_PATH_NARRATIVE_GENERIC
+            )
+        else:
+            enabled.append(_SECTION_INSTRUCTIONS[name])
     preamble = (
         "\n\nAdditionally, include the following section(s) in the narrative. The word-count "
         "target given above applies only to the core section(s) described before this point -- "

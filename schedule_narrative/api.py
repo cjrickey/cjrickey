@@ -175,6 +175,7 @@ class NarrativeSections(BaseModel):
     milestone_changes requires a P6 Baseline."""
     executive_summary: bool = False
     critical_path_narrative: bool = False
+    show_relationship_types: bool = True  # only meaningful when critical_path_narrative is on
     milestone_changes: bool = False
     near_critical_discussion: bool = False
     major_schedule_risks: bool = False

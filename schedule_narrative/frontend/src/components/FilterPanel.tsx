@@ -17,6 +17,7 @@ export type FilterState = {
 const DEFAULT_SECTIONS: NarrativeSections = {
   executive_summary: false,
   critical_path_narrative: false,
+  show_relationship_types: true,
   milestone_changes: false,
   near_critical_discussion: false,
   major_schedule_risks: false,
@@ -172,21 +173,34 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
           {SECTION_OPTIONS.map(({ key, label, requiresBaseline }) => {
             const disabled = requiresBaseline && !hasBaseline;
             return (
-              <label
-                key={key}
-                className={`flex items-center gap-2 text-sm ${disabled ? "text-ink-muted/50" : "text-ink"}`}
-                title={disabled ? "Requires a P6 Baseline embedded in the uploaded file" : undefined}
-              >
-                <input
-                  type="checkbox"
-                  checked={value.sections[key]}
-                  disabled={disabled}
-                  onChange={(e) => setSection(key, e.target.checked)}
-                  className="h-4 w-4 rounded-sm border-rule accent-oxide disabled:opacity-40"
-                />
-                {label}
-                {requiresBaseline && <span className="text-xs text-ink-muted">requires baseline</span>}
-              </label>
+              <div key={key}>
+                <label
+                  className={`flex items-center gap-2 text-sm ${disabled ? "text-ink-muted/50" : "text-ink"}`}
+                  title={disabled ? "Requires a P6 Baseline embedded in the uploaded file" : undefined}
+                >
+                  <input
+                    type="checkbox"
+                    checked={value.sections[key]}
+                    disabled={disabled}
+                    onChange={(e) => setSection(key, e.target.checked)}
+                    className="h-4 w-4 rounded-sm border-rule accent-oxide disabled:opacity-40"
+                  />
+                  {label}
+                  {requiresBaseline && <span className="text-xs text-ink-muted">requires baseline</span>}
+                </label>
+                {key === "critical_path_narrative" && value.sections.critical_path_narrative && (
+                  <label className="flex items-center gap-2 text-sm text-ink-muted ml-6 mt-1.5">
+                    <input
+                      type="checkbox"
+                      checked={value.sections.show_relationship_types}
+                      onChange={(e) => setSection("show_relationship_types", e.target.checked)}
+                      className="h-4 w-4 rounded-sm border-rule accent-oxide"
+                    />
+                    Name the relationship type (e.g. &ldquo;start to start&rdquo;) -- off just says
+                    &ldquo;next&rdquo;/&ldquo;alongside&rdquo;
+                  </label>
+                )}
+              </div>
             );
           })}
         </div>

@@ -16,6 +16,7 @@ export type ReportType = "weekly_oac" | "monthly_executive";
 export type NarrativeSections = {
   executive_summary: boolean;
   critical_path_narrative: boolean;
+  show_relationship_types: boolean; // only meaningful when critical_path_narrative is on
   milestone_changes: boolean; // requires a P6 Baseline in the uploaded file
   near_critical_discussion: boolean;
   major_schedule_risks: boolean;
