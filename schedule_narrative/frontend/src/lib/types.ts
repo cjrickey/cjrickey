@@ -9,6 +9,7 @@ export type UploadResponse = {
   activity_count: number;
   wbs_tree: WbsNode[];
   has_baseline: boolean;
+  data_quality_warning: string | null;
 };
 
 export type ReportType = "weekly_oac" | "monthly_executive";

@@ -322,12 +322,17 @@ def _parse_calendars(root: ET.Element) -> dict[str, dict]:
     day pattern turns a raw date gap (see _xml_total_float_days) into a
     reasonable whole-workday count instead of counting weekends and
     holidays as work time, which wildly overstates float/behind-schedule
-    magnitude on any gap spanning more than a few days. <Calendar> is a
-    root-level element (a project's calendars are shared, not nested
-    under <Project>), looked up per-activity by CalendarObjectId.
-    Returns {calendar_object_id: {"workdays": {0..6}, "holidays": {date}}}."""
+    magnitude on any gap spanning more than a few days. Confirmed on a
+    real export that <Calendar> is a root-level element (project
+    calendars shared, not nested under <Project>) -- but exports vary
+    (see the two different float-field conventions already found in
+    this app's history), so this searches at any depth rather than
+    assuming root-level is universal; a project-scoped export that
+    nests calendars under <Project> is found the same way. Looked up
+    per-activity by CalendarObjectId. Returns
+    {calendar_object_id: {"workdays": {0..6}, "holidays": {date}}}."""
     calendars: dict[str, dict] = {}
-    for cal in root.findall("Calendar"):
+    for cal in root.findall(".//Calendar"):
         object_id = cal.findtext("ObjectId")
         if not object_id:
             continue
@@ -576,6 +581,34 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
         ))
 
     return activities
+
+
+def critical_status_coverage_warning(activities: list[Activity]) -> Optional[str]:
+    """P6/PMXML exports vary by version and export settings in ways this
+    app has already been caught out by twice (see xml_parser.py /
+    activity_extractor.py history: one variant carries TotalFloat/
+    IsCritical directly, another only RemainingEarlyStartDate/
+    RemainingLateStartDate, and there's no guarantee a not-yet-seen
+    variant won't use a third naming convention this pipeline doesn't
+    recognize). Rather than let that surface only as a confusing "zero
+    critical activities" narrative days later, checked at upload time so
+    it's diagnosable immediately: if most not-yet-finished activities
+    have no determinable total float, something about this specific
+    export's field names likely isn't recognized. Deliberately says
+    nothing about a specific float number (never surfaced to users at
+    all -- see prompt_templates.py) -- only that determination itself
+    may have failed for this file."""
+    relevant = [a for a in activities if a.status != "completed"]
+    if not relevant:
+        return None
+    determined = sum(1 for a in relevant if a.total_float_days is not None)
+    if determined / len(relevant) >= 0.5:
+        return None
+    return (
+        "Critical path status could not be determined for most activities in this file. "
+        "This can happen with certain P6 export settings or versions -- results involving "
+        "critical or near-critical activities may be incomplete. Contact us if this persists."
+    )
 
 
 def get_data_date_xml(project: ET.Element) -> Optional[datetime]:

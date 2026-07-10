@@ -171,6 +171,10 @@ function ScheduleNarrativeApp() {
               </p>
             )}
 
+            {schedule.data_quality_warning && (
+              <p className="-mt-6 text-xs text-ochre">{schedule.data_quality_warning}</p>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
               <div className="md:pr-8 md:border-r border-rule">
                 <h2 className="text-xs font-medium uppercase tracking-wider text-ink-muted mb-4">
