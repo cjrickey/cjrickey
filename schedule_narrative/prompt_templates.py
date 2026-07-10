@@ -44,6 +44,13 @@ e.g. "Data Hall 5-03", "Gallery 5-07") when there are more than ~5 activities in
 Do not group by raw WBS path -- use the natural area names a reader would recognize from \
 being on site.
 
+On a schedule with a lot happening in a period, an area group can itself run long -- when \
+one would take more than a sentence or two to cover activity-by-activity, name only the \
+most significant few (favor milestones and the most behind-schedule items) and roll the \
+rest into a plain count (e.g. "...plus 14 more activities underway in that area"). Never \
+omit an area or a whole group silently -- every activity given is accounted for, in name or \
+in a rollup count, never dropped without a trace.
+
 {metrics_instruction}
 
 State only what the data shows. Do not draw conclusions about priority, urgency, or what \
@@ -129,7 +136,10 @@ bulleted sections) covering milestone status this period. The list of what's com
 period gives the specific activities and milestones actually finished between the reporting \
 period's start date and the schedule's data date -- name at least the most significant of \
 these (favor milestones, and any others that stand out) rather than only giving aggregate \
-counts. Do not speculate on causes for date movement beyond what's in the data -- state \
+counts. On a schedule with a great deal completed or starting in the period, name only the \
+handful that matter most and roll the remainder into a plain count (e.g. "...and 40 other \
+activities finished this period") rather than trying to list everything or omitting the rest \
+silently. Do not speculate on causes for date movement beyond what's in the data -- state \
 variance as fact, where included per the instruction below.
 
 {metrics_instruction}
@@ -222,7 +232,10 @@ _CRITICAL_PATH_NARRATIVE_PREAMBLE = """\
 Add a "Critical Path Narrative" section with two subsections:
 
 "This Period": cover only the critical activities among what's completed or upcoming this \
-period -- which finished, which are underway, which are due to start.
+period -- which finished, which are underway, which are due to start. On a schedule with a \
+great many critical activities active in the period, name only the handful that matter most \
+(favor milestones and anything finishing or starting right at the edges of the period) and \
+roll the rest into a plain count -- never an exhaustive list, and never a silent drop.
 
 "Remaining Critical Path to Completion": on a schedule running badly behind, many activities \
 can be critical at once -- not one critical path but several parallel ones. The data below \
@@ -234,6 +247,15 @@ only what's given, never invent a second or third path to round out three. Each 
 the entire remaining chain of not-yet-completed critical work on that path, regardless of the \
 report's own date window, and must never be trimmed to only what falls inside the reporting \
 period.
+
+A path's chain can itself run long -- dozens of activities on a badly behind schedule. When \
+a chain is too long to walk activity-by-activity in a short paragraph, do not try to name \
+every one: describe the overall span instead (what kicks the chain off, what it ultimately \
+drives toward, and roughly how much work sits between), naming only the most significant \
+few along the way (chain endpoints, milestones, any notably long stretch) and rolling the \
+rest into a plain count (e.g. "...with roughly 30 more activities carrying the work between \
+them"). A short chain still gets covered activity-by-activity as before -- only compress once \
+walking every activity would no longer fit a short paragraph.
 
 Both subsections must read as connected narrative prose describing what the work is and how \
 it flows from one activity to the next -- not a list of float-status facts. Do not state or \
@@ -309,7 +331,10 @@ positive float, not already critical -- the closest to becoming critical if upst
 slips) as one short paragraph of connected prose, the same style as the critical path \
 narrative -- not a list of float-status facts. Never state or imply a specific float or \
 day-count figure, even though one is present in the data -- this pipeline can't guarantee \
-that number matches what P6 itself would show. If no near-critical chain is given, state \
+that number matches what P6 itself would show. If this chain is too long to cover \
+activity-by-activity in a short paragraph, describe its overall span instead (naming only \
+its endpoints and any milestone along it) and roll the rest into a plain count, the same way \
+a long critical path chain is handled above. If no near-critical chain is given, state \
 plainly that no activities are currently near-critical, without inventing one.\
 """,
     "major_schedule_risks": """\

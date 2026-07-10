@@ -81,43 +81,18 @@ MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", 
 # durable fix if this ever needs to be legitimately raised.
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 * 1024
 
-# critical_paths, nearest_near_critical_path, and critical_activities
-# (monthly's full critical list) are NOT capped here -- none of them are
-# enumerated wholesale by any narration instruction any more.
-# critical_activities only ever feeds critical_path_summary's aggregate
-# count/most-behind item; critical_paths and nearest_near_critical_path
-# are already self-narrowed by filter_engine._top_distinct_paths (top 3
-# worst chains, and the single nearest chain, respectively) regardless
-# of how many critical/near-critical activities the schedule has. Capping
-# any of them on activity count just blocked schedules with a lot of
-# critical activities for no narrative benefit.
-
-# The main report body groups activities by area and can reasonably
-# summarize a few hundred -- still much less than a "monster" schedule's
-# full activity count, since date range, WBS scope, and the default
-# "important activities only" narrowing in filter_engine (critical, or
-# float < 25 days -- never a user-facing threshold, see filter_engine.py)
-# all narrow this before it ever reaches this check. This cap is a
-# safety net for what's left after that narrowing, not the primary
-# mechanism.
-MAX_REPORT_ACTIVITIES = int(os.environ.get("MAX_REPORT_ACTIVITIES", "500"))
-
-
-def _check_payload_size(payload: dict, report_type: str) -> None:
-    if report_type == "weekly_oac":
-        total = len(payload.get("completed_activities", [])) + len(payload.get("upcoming_activities", []))
-    else:
-        total = (
-            len(payload.get("completed_this_period", []))
-            + len(payload.get("starting_this_period", []))
-            + len(payload.get("milestones", []))
-        )
-    if total > MAX_REPORT_ACTIVITIES:
-        raise HTTPException(
-            400,
-            f"This report would cover {total} activities, too many to narrate well "
-            f"(limit {MAX_REPORT_ACTIVITIES}). Narrow the date range and/or WBS scope and try again.",
-        )
+# No cap on report size any more, for any field -- critical_paths,
+# nearest_near_critical_path, and critical_activities (monthly's full
+# critical list) are already self-narrowed by
+# filter_engine._top_distinct_paths (top 3 worst chains, and the single
+# nearest chain) regardless of how many critical/near-critical
+# activities the schedule has, and the main report body (completed/
+# upcoming) is narrowed by date range, WBS scope, and the default
+# "important activities only" filter. Beyond that, a schedule that's
+# still huge is handled by prompt-level rollup guidance (see
+# prompt_templates.py) rather than a hard count that blocks generation
+# outright -- capping on activity count only ever blocked schedules
+# with a lot going on, for no narrative benefit.
 
 
 def _seq_key(raw: Optional[str]) -> tuple:
@@ -344,14 +319,12 @@ async def generate_narrative(
             milestones_only=req.milestones_only,
         )
         payload = apply_filters(activities, data_date, spec)
-        _check_payload_size(payload, "weekly_oac")
         generate = lambda: generate_weekly_oac_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     elif req.report_type == "monthly_executive":
         payload = build_monthly_executive_payload(
             activities, data_date, req.wbs_node_names, req.lookback_days, req.lookahead_days,
         )
-        _check_payload_size(payload, "monthly_executive")
         generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     else:
