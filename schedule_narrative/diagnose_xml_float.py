@@ -50,15 +50,19 @@ def main(path: str) -> None:
 
     # Specifically check the fields this app currently relies on.
     print("\n--- Fields this app currently uses for critical/float detection ---")
+    total_float_present = sum(1 for a in activities if (a.findtext("TotalFloat") or "").strip())
+    is_critical_present = sum(1 for a in activities if (a.findtext("IsCritical") or "").strip())
     early_present = sum(1 for a in activities if (a.findtext("EarlyStartDate") or "").strip())
     late_present = sum(1 for a in activities if (a.findtext("LateStartDate") or "").strip())
     both_present = sum(
         1 for a in activities
         if (a.findtext("EarlyStartDate") or "").strip() and (a.findtext("LateStartDate") or "").strip()
     )
-    print(f"EarlyStartDate non-empty: {early_present} / {len(activities)}")
-    print(f"LateStartDate non-empty:  {late_present} / {len(activities)}")
-    print(f"Both non-empty:           {both_present} / {len(activities)}")
+    print(f"TotalFloat non-empty:     {total_float_present} / {len(activities)}  (primary source)")
+    print(f"IsCritical non-empty:     {is_critical_present} / {len(activities)}  (primary source)")
+    print(f"EarlyStartDate non-empty: {early_present} / {len(activities)}  (fallback only)")
+    print(f"LateStartDate non-empty:  {late_present} / {len(activities)}  (fallback only)")
+    print(f"Both Early+Late non-empty:{both_present} / {len(activities)}")
 
     # Any field whose name suggests it directly carries float/critical/
     # driving-path info -- if one of these exists, it's likely a more

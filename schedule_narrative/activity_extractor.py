@@ -299,10 +299,22 @@ _XML_STATUS_MAP = {
 
 
 def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
-    """Total float isn't always its own field in a P6 XML export (an
-    export-option choice); derive it from LateStartDate - EarlyStartDate
-    instead, mirroring the /8-hour-workday approximation the XER path uses.
-    Used for both the live project's activities and the baseline's."""
+    """P6's XML schema carries TotalFloat as its own field (hours, same
+    convention as the XER TASK table's total_float_hr_cnt) -- read it
+    directly rather than deriving it, since deriving from
+    LateStartDate - EarlyStartDate breaks silently whenever either date
+    is missing, stale, or doesn't reflect float the way this pipeline
+    assumes (no lag/calendar modeling here, unlike P6's own calculation).
+    Falls back to the date-derived approximation only when the direct
+    field isn't present in this export. Used for both the live project's
+    activities and the baseline's."""
+    raw = (activity.findtext("TotalFloat") or "").strip()
+    if raw:
+        try:
+            return round(float(raw) / 8)  # 8hr workday, whole days for the narrative
+        except ValueError:
+            pass
+
     early_start = _normalize_xml_date(activity.findtext("EarlyStartDate"))
     late_start = _normalize_xml_date(activity.findtext("LateStartDate"))
     if not (early_start and late_start):
@@ -351,10 +363,14 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
     the baseline was taken -- means target_finish stays None, so
     variance_days comes out None too: no invented facts.
 
-    Total float isn't always present as its own field in a P6 XML export
-    (an export-option choice); it's derived here from
-    LateStartDate - EarlyStartDate instead, mirroring the /8-hour-workday
-    approximation the XER path already uses.
+    Total float and criticality are read from P6's own TotalFloat/
+    IsCritical fields (present directly in the XML schema, same as the
+    XER TASK table's total_float_hr_cnt) rather than derived, since P6's
+    own computed values reflect whatever critical-path definition and
+    calendar/lag modeling the schedule actually uses -- this pipeline has
+    no CPM engine of its own. Falls back to deriving float from
+    LateStartDate - EarlyStartDate only if an export omits the direct
+    field.
     """
     from xml_parser import pick_primary_project, find_matching_baseline
 
@@ -389,7 +405,18 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
         early_start = _normalize_xml_date(a.findtext("EarlyStartDate"))
         total_float_days = _xml_total_float_days(a)
 
-        is_critical = total_float_days is not None and total_float_days <= 0
+        # IsCritical is P6's own computed flag -- it reflects whatever
+        # critical-path definition the project's schedule options actually
+        # use (total float <= a threshold, or true Longest Path, which
+        # isn't always identical to float <= 0), so it's more trustworthy
+        # than re-deriving criticality from total_float_days here. Only
+        # fall back to the float-based definition when this export omits
+        # the field entirely.
+        raw_is_critical = (a.findtext("IsCritical") or "").strip().lower()
+        if raw_is_critical in ("true", "false"):
+            is_critical = raw_is_critical == "true"
+        else:
+            is_critical = total_float_days is not None and total_float_days <= 0
         is_milestone = a.findtext("Type") in ("Start Milestone", "Finish Milestone")
 
         planned_start_field = _normalize_xml_date(a.findtext("PlannedStartDate"))
