@@ -78,57 +78,87 @@ def _build_critical_graph(scoped_activities: list[Activity]):
     return remaining, by_id, driving_preds, driving_succs
 
 
-def _trace_chain_backward(
-    end_id: str,
+def _worst_branch(
+    candidates: list[tuple[str, str]],
+    by_id: dict[str, Activity],
+) -> str:
+    def float_of(link: tuple[str, str]) -> float:
+        f = by_id[link[0]].total_float_days
+        return f if f is not None else 0
+
+    return min(candidates, key=float_of)[0]
+
+
+def _full_chain_through(
+    activity_id: str,
     by_id: dict[str, Activity],
     driving_preds: dict[str, list[tuple[str, str]]],
+    driving_succs: dict[str, list[tuple[str, str]]],
 ) -> list[str]:
-    """Walk backward from a chain's endpoint via driving predecessor links,
-    picking the more negative-float predecessor at any branch point (the
-    worse branch is the one actually driving the schedule), until there's
-    no further driving predecessor. Returns activity ids in chronological
-    order (earliest first)."""
-    chain = [end_id]
-    seen = {end_id}
-    current = end_id
+    """Trace the one full chain (true source to true sink) that passes
+    through activity_id, picking the more negative-float branch at any
+    fork or merge along the way. Walking backward AND forward from every
+    activity (not just from a shared endpoint) is what actually recovers
+    distinct parallel paths: when several branches converge into the same
+    downstream activity or milestone, tracing backward from that shared
+    point alone would only ever find the single worst branch and silently
+    drop the others. Tracing from every activity and de-duplicating by
+    the resulting activity set (done by the caller) recovers each
+    genuinely distinct branch instead."""
+    backward = []
+    seen_back = {activity_id}
+    current = activity_id
     while True:
-        preds = [p for p in driving_preds.get(current, []) if p[0] not in seen]
+        preds = [p for p in driving_preds.get(current, []) if p[0] not in seen_back]
         if not preds:
             break
+        current = _worst_branch(preds, by_id)
+        backward.append(current)
+        seen_back.add(current)
+    backward.reverse()
 
-        def float_of(pred: tuple[str, str]) -> float:
-            f = by_id[pred[0]].total_float_days
-            return f if f is not None else 0
+    forward = []
+    seen_fwd = {activity_id}
+    current = activity_id
+    while True:
+        succs = [s for s in driving_succs.get(current, []) if s[0] not in seen_fwd]
+        if not succs:
+            break
+        current = _worst_branch(succs, by_id)
+        forward.append(current)
+        seen_fwd.add(current)
 
-        current = min(preds, key=float_of)[0]
-        chain.append(current)
-        seen.add(current)
-    chain.reverse()
-    return chain
+    return backward + [activity_id] + forward
 
 
 def _top_critical_paths(scoped_activities: list[Activity], max_paths: int = 3) -> list[dict]:
     """When a schedule is badly behind, many activities can be critical at
-    once -- not one critical path but several parallel ones. Traces each
-    distinct chain (walking backward from every activity with no driving
-    successor, i.e. every chain's endpoint) and ranks them by their worst
-    (most negative) float, since that's what actually makes one chain more
-    critical than another. Returns up to max_paths chains, most negative
-    first -- "primary" is the worst, down to "tertiary." A schedule with
-    fewer than max_paths distinct chains just returns however many exist;
-    none are invented to fill out three."""
+    once -- not one critical path but several parallel ones (e.g.
+    structural, MEP, and envelope work each independently behind,
+    possibly converging on the same final milestone). Traces the full
+    chain through every critical activity, de-duplicates identical
+    chains, and ranks the distinct ones by their worst (most negative)
+    float -- since that's what actually makes one chain more critical
+    than another. Returns up to max_paths chains, most negative first --
+    "primary" is the worst, down to "tertiary." A schedule with fewer
+    than max_paths distinct chains just returns however many exist; none
+    are invented to fill out three."""
     remaining, by_id, driving_preds, driving_succs = _build_critical_graph(scoped_activities)
     if not remaining:
         return []
-
-    endpoints = [a.activity_id for a in remaining if not driving_succs.get(a.activity_id)]
-    chains = [_trace_chain_backward(end_id, by_id, driving_preds) for end_id in endpoints]
 
     def worst_float(chain: list[str]) -> float:
         floats = [by_id[aid].total_float_days for aid in chain if by_id[aid].total_float_days is not None]
         return min(floats) if floats else 0
 
-    chains.sort(key=worst_float)
+    unique_chains: dict[frozenset, list[str]] = {}
+    for a in remaining:
+        chain = _full_chain_through(a.activity_id, by_id, driving_preds, driving_succs)
+        key = frozenset(chain)
+        if key not in unique_chains:
+            unique_chains[key] = chain
+
+    chains = sorted(unique_chains.values(), key=worst_float)
 
     def named(links: list[tuple[str, str]]) -> list[dict]:
         return [{"name": by_id[activity_id].name, "relationship_type": rel_type} for activity_id, rel_type in links]
