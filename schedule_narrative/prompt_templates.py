@@ -284,9 +284,11 @@ state plainly that no baseline-based milestone comparison is available for this 
 never describe a non-baseline planned or forecast date as if it were baseline movement.\
 """,
     "near_critical_discussion": """\
-Add a "Near-Critical Path Discussion" section: describe activities with low but positive \
-total float (roughly 1-10 days, not already critical) that could become critical if upstream \
-work slips. Base this only on total float values given in the data.\
+Add a "Near-Critical Path Discussion" section: the nearest near-critical chain given (low but \
+positive total float, roughly 1-10 days, not already critical -- the closest to becoming \
+critical if upstream work slips) as one short paragraph of connected prose, the same style as \
+the critical path narrative -- not a list of float-status facts. If no near-critical chain is \
+given, state plainly that no activities are currently near-critical, without inventing one.\
 """,
     "major_schedule_risks": """\
 Add a "Major Schedule Risks" section: identify only risk patterns directly visible in the \

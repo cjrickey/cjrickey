@@ -54,19 +54,16 @@ def _driving_predecessor_ids(a: Activity, by_id: dict[str, Activity]) -> list[tu
     return [(activity_id, rel_type) for gap, activity_id, rel_type in candidates if gap <= best_gap + 1]
 
 
-def _build_critical_graph(scoped_activities: list[Activity]):
-    """All not-yet-completed critical activities across the *entire*
-    remaining schedule -- not windowed to a report period -- plus the
-    driving predecessor/successor graph between them. Shared by
-    _top_critical_paths; not used directly outside this module.
+def _build_activity_graph(remaining: list[Activity]):
+    """Given an already-filtered, chronologically-sorted activity list,
+    builds the driving predecessor/successor graph among them. Shared by
+    _top_critical_paths and _nearest_near_critical_path.
 
     predecessors/successors here are real P6 logic links (TASKPRED/
     Relationship, see activity_extractor.py) -- never inferred from names
     or date adjacency -- narrowed to only the driving tie(s) via
     _driving_predecessor_ids, not every logic link that happens to exist
-    between two critical activities."""
-    remaining = [a for a in scoped_activities if a.is_critical and a.status != "completed"]
-    remaining.sort(key=lambda a: parse_p6_datetime(a.planned_start) or datetime.max)
+    between two activities in the set."""
     by_id = {a.activity_id: a for a in remaining}
 
     driving_preds = {a.activity_id: _driving_predecessor_ids(a, by_id) for a in remaining}
@@ -75,7 +72,7 @@ def _build_critical_graph(scoped_activities: list[Activity]):
         for pred_id, rel_type in preds:
             driving_succs.setdefault(pred_id, []).append((succ_id, rel_type))
 
-    return remaining, by_id, driving_preds, driving_succs
+    return by_id, driving_preds, driving_succs
 
 
 def _worst_branch(
@@ -131,21 +128,19 @@ def _full_chain_through(
     return backward + [activity_id] + forward
 
 
-def _top_critical_paths(scoped_activities: list[Activity], max_paths: int = 3) -> list[dict]:
-    """When a schedule is badly behind, many activities can be critical at
-    once -- not one critical path but several parallel ones (e.g.
-    structural, MEP, and envelope work each independently behind,
-    possibly converging on the same final milestone). Traces the full
-    chain through every critical activity, de-duplicates identical
-    chains, and ranks the distinct ones by their worst (most negative)
-    float -- since that's what actually makes one chain more critical
-    than another. Returns up to max_paths chains, most negative first --
-    "primary" is the worst, down to "tertiary." A schedule with fewer
-    than max_paths distinct chains just returns however many exist; none
-    are invented to fill out three."""
-    remaining, by_id, driving_preds, driving_succs = _build_critical_graph(scoped_activities)
+def _top_distinct_paths(remaining: list[Activity], max_paths: int, rank_labels: list[str]) -> list[dict]:
+    """Shared engine behind _top_critical_paths and
+    _nearest_near_critical_path: traces the full chain through every
+    activity in `remaining` (already filtered to whatever criticality
+    condition and chronologically sorted), de-duplicates identical
+    resulting chains, ranks the distinct ones by their worst (lowest)
+    float, and returns up to max_paths of them labeled by rank_labels.
+    No cap on how many activities `remaining` itself may contain --
+    de-duplication and the max_paths slice are what keep the *output*
+    bounded, not a count check on the input."""
     if not remaining:
         return []
+    by_id, driving_preds, driving_succs = _build_activity_graph(remaining)
 
     def worst_float(chain: list[str]) -> float:
         floats = [by_id[aid].total_float_days for aid in chain if by_id[aid].total_float_days is not None]
@@ -177,15 +172,46 @@ def _top_critical_paths(scoped_activities: list[Activity], max_paths: int = 3) -
             "successors": named(driving_succs.get(activity_id, [])),
         }
 
-    ranks = ["primary", "secondary", "tertiary"]
     return [
         {
-            "rank": ranks[i],
+            "rank": rank_labels[i],
             "worst_float_days": worst_float(chain),
             "activities": [activity_dict(aid) for aid in chain],
         }
         for i, chain in enumerate(chains[:max_paths])
     ]
+
+
+def _top_critical_paths(scoped_activities: list[Activity], max_paths: int = 3) -> list[dict]:
+    """When a schedule is badly behind, many activities can be critical at
+    once -- not one critical path but several parallel ones (e.g.
+    structural, MEP, and envelope work each independently behind,
+    possibly converging on the same final milestone). Ranked by worst
+    (most negative) float -- "primary" is the worst, down to "tertiary."
+    A schedule with fewer than max_paths distinct chains just returns
+    however many exist; none are invented to fill out three."""
+    remaining = [a for a in scoped_activities if a.is_critical and a.status != "completed"]
+    remaining.sort(key=lambda a: parse_p6_datetime(a.planned_start) or datetime.max)
+    return _top_distinct_paths(remaining, max_paths, ["primary", "secondary", "tertiary"])
+
+
+def _nearest_near_critical_path(scoped_activities: list[Activity]) -> list[dict]:
+    """The single chain of near-critical activities (positive float, not
+    yet critical, 0 < float <= 10 days, not milestones) closest to
+    becoming critical -- i.e. with the lowest float. Same chain-tracing
+    approach as _top_critical_paths, narrowed to just the one nearest
+    chain rather than three, since "near-critical" isn't already a
+    narrow category the way "critical" (float <= 0) is -- a badly behind
+    schedule can have hundreds of activities sitting at a few days of
+    float, and a flat list of all of them isn't a short discussion."""
+    remaining = [
+        a for a in scoped_activities
+        if not a.is_milestone and not a.is_critical
+        and a.total_float_days is not None and 0 < a.total_float_days <= 10
+        and a.status != "completed"
+    ]
+    remaining.sort(key=lambda a: parse_p6_datetime(a.planned_start) or datetime.max)
+    return _top_distinct_paths(remaining, max_paths=1, rank_labels=["nearest"])
 
 
 @dataclass
@@ -285,6 +311,7 @@ def apply_filters(
         "completed_activities": [serialize(a) for a in completed],
         "upcoming_activities": [serialize(a) for a in upcoming],
         "critical_paths": _top_critical_paths(scoped_for_chain),
+        "nearest_near_critical_path": _nearest_near_critical_path(scoped_for_chain),
     }
 
 
@@ -315,17 +342,6 @@ def build_monthly_executive_payload(
 
     milestones = [a for a in scoped if a.is_milestone]
     critical = [a for a in scoped if a.is_critical and not a.is_milestone]
-    # Only populated for the optional bolt-on sections (near_critical_discussion,
-    # critical_path_narrative, etc.) that ask about individual activities --
-    # the core monthly narrative itself stays at the milestone/aggregate level
-    # described above. Without this, those sections have no per-activity float
-    # data to draw from at all for a monthly report and the model has nothing
-    # truthful to say but "no such data is present."
-    near_critical = [
-        a for a in scoped
-        if not a.is_milestone and not a.is_critical
-        and a.total_float_days is not None and 0 < a.total_float_days <= 10
-    ]
 
     period_start = data_date - timedelta(days=lookback_days)
     period_end = data_date + timedelta(days=lookahead_days)
@@ -385,8 +401,8 @@ def build_monthly_executive_payload(
             ),
         },
         "critical_activities": [activity_float_dict(a) for a in critical],
-        "near_critical_activities": [activity_float_dict(a) for a in near_critical],
         "critical_paths": _top_critical_paths(scoped),
+        "nearest_near_critical_path": _nearest_near_critical_path(scoped),
     }
 
 
