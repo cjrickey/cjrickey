@@ -26,17 +26,21 @@ class P6XmlFile:
 
 # Real P6/PMXML exports can carry far more than the schedule data this
 # app reads -- resource assignments, UDFs, activity codes, notes, risks,
-# calendars, S-curve spread data, etc. -- and a plain ET.parse() keeps
-# all of it in memory for the whole request regardless of whether any of
-# it is ever looked at (verified: none of these tags are referenced
-# anywhere in xml_parser.py or activity_extractor.py). Cleared the
-# instant each one's closing tag is parsed, so memory stays roughly
-# proportional to what this app actually uses, not to whatever the
-# export happens to include.
+# S-curve spread data, etc. -- and a plain ET.parse() keeps all of it in
+# memory for the whole request regardless of whether any of it is ever
+# looked at (verified: none of these tags are referenced anywhere in
+# xml_parser.py or activity_extractor.py). Cleared the instant each
+# one's closing tag is parsed, so memory stays roughly proportional to
+# what this app actually uses, not to whatever the export happens to
+# include. Calendar is deliberately NOT in this set -- when an export
+# doesn't carry a direct TotalFloat field, activity_extractor.py needs
+# each Calendar's work week + holiday list to turn a raw date gap into
+# a real business-day count instead of treating every calendar day
+# (including weekends and holidays) as work time.
 _UNUSED_HEAVY_TAGS = {
     "ResourceAssignment", "UDF", "UDFType", "ActivityCode", "ActivityCodeType",
     "ActivityCodeTypeValue", "Expense", "Step", "Risk", "Role", "Resource",
-    "Calendar", "WorkTimeException", "ResourceCode", "ResourceCodeType",
+    "WorkTimeException", "ResourceCode", "ResourceCodeType",
     "ProjectCode", "ProjectCodeType", "Currency", "FinancialPeriod",
     "ScheduleOptions", "ProjectSpread", "ResourceAssignmentSpread",
     "Notebook", "ActivityNote", "WBSNote", "ProjectNote",

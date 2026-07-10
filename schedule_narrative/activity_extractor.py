@@ -8,7 +8,7 @@ be treated as part of this project's schedule).
 from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 import xml.etree.ElementTree as ET
 
@@ -298,7 +298,84 @@ _XML_STATUS_MAP = {
 }
 
 
-def _xml_date_gap_days(activity: ET.Element, start_tag: str, end_tag: str) -> Optional[float]:
+_WEEKDAY_INDEX = {
+    "Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
+    "Friday": 4, "Saturday": 5, "Sunday": 6,
+}
+_DEFAULT_CALENDAR = {"workdays": {0, 1, 2, 3, 4}, "holidays": set()}  # plain Mon-Fri, no holidays
+
+
+def _has_work_time(parent: ET.Element) -> bool:
+    """A P6 Calendar represents a non-working day/date as a <WorkTime
+    xsi:nil="true" /> child with no Start/Finish -- checking for real
+    Start content (rather than the nil attribute, whose namespace prefix
+    survives root-tag-stripping unpredictably) works regardless of how
+    the export happens to serialize it."""
+    return any((wt.findtext("Start") or "").strip() for wt in parent.findall("WorkTime"))
+
+
+def _parse_calendars(root: ET.Element) -> dict[str, dict]:
+    """P6's own float calculation is calendar-aware -- a project can mix
+    5-day, 6-day, and 24-hour calendars, each with its own holiday list,
+    and an activity's Calendar assignment determines which one applies.
+    This pipeline has no CPM engine, but replicating just the working-
+    day pattern turns a raw date gap (see _xml_total_float_days) into a
+    reasonable whole-workday count instead of counting weekends and
+    holidays as work time, which wildly overstates float/behind-schedule
+    magnitude on any gap spanning more than a few days. <Calendar> is a
+    root-level element (a project's calendars are shared, not nested
+    under <Project>), looked up per-activity by CalendarObjectId.
+    Returns {calendar_object_id: {"workdays": {0..6}, "holidays": {date}}}."""
+    calendars: dict[str, dict] = {}
+    for cal in root.findall("Calendar"):
+        object_id = cal.findtext("ObjectId")
+        if not object_id:
+            continue
+        workdays = set()
+        week = cal.find("StandardWorkWeek")
+        if week is not None:
+            for day in week.findall("StandardWorkHours"):
+                name = day.findtext("DayOfWeek")
+                if name in _WEEKDAY_INDEX and _has_work_time(day):
+                    workdays.add(_WEEKDAY_INDEX[name])
+
+        holidays = set()
+        exceptions = cal.find("HolidayOrExceptions")
+        if exceptions is not None:
+            for exc in exceptions.findall("HolidayOrException"):
+                if _has_work_time(exc):
+                    continue  # modified hours that day, still a working day
+                normalized = _normalize_xml_date(exc.findtext("Date"))
+                parsed = parse_p6_datetime(normalized) if normalized else None
+                if parsed:
+                    holidays.add(parsed.date())
+
+        calendars[object_id] = {"workdays": workdays or {0, 1, 2, 3, 4}, "holidays": holidays}
+    return calendars
+
+
+def _business_days_between(start: datetime, end: datetime, calendar: dict) -> int:
+    """Signed whole-workday count between two datetimes under the given
+    calendar's work week + holiday pattern. Time-of-day is ignored (this
+    pipeline works in whole days everywhere else too); only which
+    calendar days fall strictly between the two dates counts."""
+    sign = 1
+    lo, hi = start, end
+    if lo > hi:
+        lo, hi = hi, lo
+        sign = -1
+
+    count = 0
+    current = lo.date()
+    end_date = hi.date()
+    while current < end_date:
+        if current.weekday() in calendar["workdays"] and current not in calendar["holidays"]:
+            count += 1
+        current += timedelta(days=1)
+    return sign * count
+
+
+def _xml_date_gap_days(activity: ET.Element, start_tag: str, end_tag: str, calendar: dict) -> Optional[float]:
     start = _normalize_xml_date(activity.findtext(start_tag))
     end = _normalize_xml_date(activity.findtext(end_tag))
     if not (start and end):
@@ -307,10 +384,10 @@ def _xml_date_gap_days(activity: ET.Element, start_tag: str, end_tag: str) -> Op
     e = parse_p6_datetime(end)
     if not (s and e):
         return None
-    return round((e - s).total_seconds() / 3600 / 8)  # whole days for the narrative
+    return _business_days_between(s, e, calendar)
 
 
-def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
+def _xml_total_float_days(activity: ET.Element, calendars: dict[str, dict]) -> Optional[float]:
     """P6's XML schema carries TotalFloat as its own field (hours, same
     convention as the XER TASK table's total_float_hr_cnt) on some
     exports -- read it directly when present, rather than deriving it.
@@ -322,7 +399,13 @@ def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
     for an in-progress or not-started activity's float from the data
     date forward. Tries each in order and uses the first that yields a
     value, so an export missing one naming convention still works via
-    another. Used for both the live project's activities and the
+    another. When deriving from dates, counts actual working days under
+    the activity's own Calendar (falling back to a plain Mon-Fri week if
+    the export carries no calendar data or this activity's
+    CalendarObjectId doesn't match one) rather than raw elapsed hours,
+    which otherwise overstates float by roughly 3x-5x on any gap of more
+    than a few days by counting nights, weekends, and holidays as work
+    time. Used for both the live project's activities and the
     baseline's."""
     raw = (activity.findtext("TotalFloat") or "").strip()
     if raw:
@@ -331,11 +414,13 @@ def _xml_total_float_days(activity: ET.Element) -> Optional[float]:
         except ValueError:
             pass
 
-    gap = _xml_date_gap_days(activity, "RemainingEarlyStartDate", "RemainingLateStartDate")
+    calendar = calendars.get(activity.findtext("CalendarObjectId"), _DEFAULT_CALENDAR)
+
+    gap = _xml_date_gap_days(activity, "RemainingEarlyStartDate", "RemainingLateStartDate", calendar)
     if gap is not None:
         return gap
 
-    return _xml_date_gap_days(activity, "EarlyStartDate", "LateStartDate")
+    return _xml_date_gap_days(activity, "EarlyStartDate", "LateStartDate", calendar)
 
 
 def _build_xml_relationships(project: ET.Element) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
@@ -380,15 +465,17 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
     XER TASK table's total_float_hr_cnt) rather than derived, since P6's
     own computed values reflect whatever critical-path definition and
     calendar/lag modeling the schedule actually uses -- this pipeline has
-    no CPM engine of its own. Falls back to deriving float from
-    LateStartDate - EarlyStartDate only if an export omits the direct
-    field.
+    no CPM engine of its own. Falls back to deriving float from date
+    gaps (see _xml_total_float_days) only if an export omits the direct
+    fields, using each activity's own Calendar to count real working
+    days rather than raw elapsed time.
     """
     from xml_parser import pick_primary_project, find_matching_baseline
 
     project = pick_primary_project(root)
     project_object_id = project.findtext("ObjectId")
     baseline = find_matching_baseline(root, project_object_id)
+    calendars = _parse_calendars(root)
 
     baseline_target_finish: dict[str, str] = {}
     if baseline is not None:
@@ -420,7 +507,7 @@ def extract_activities_from_xml(root: ET.Element) -> list[Activity]:
             _normalize_xml_date(a.findtext("EarlyStartDate"))
             or _normalize_xml_date(a.findtext("RemainingEarlyStartDate"))
         )
-        total_float_days = _xml_total_float_days(a)
+        total_float_days = _xml_total_float_days(a, calendars)
 
         # IsCritical is P6's own computed flag -- it reflects whatever
         # critical-path definition the project's schedule options actually
