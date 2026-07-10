@@ -205,6 +205,12 @@ function ScheduleNarrativeApp() {
             )}
           </div>
         )}
+
+        <footer className="mt-16 pt-6 border-t border-rule text-xs text-ink-muted">
+          <a href="mailto:feedback@schedulenarrative.com" className="hover:text-oxide transition-colors">
+            Questions or feedback? feedback@schedulenarrative.com
+          </a>
+        </footer>
       </div>
     </div>
   );
