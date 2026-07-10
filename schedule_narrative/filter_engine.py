@@ -23,12 +23,30 @@ def _reference_date(a: Activity, which: str) -> Optional[datetime]:
 
 def _driving_predecessor_ids(a: Activity, by_id: dict[str, Activity]) -> list[tuple[str, str]]:
     """Of a's real predecessor links, keep only the one(s) that actually
-    constrain a's own date -- approximated by matching each predecessor's
-    implied constraint date against a's own start/finish, since this
-    pipeline doesn't model lag or run a full CPM forward pass. A Finish to
-    Start or Start to Start link constrains a's start; Finish to Finish or
-    Start to Finish constrains a's finish. Ties within a day both count as
-    driving (e.g. two predecessors converging the same day)."""
+    constrain a's own date.
+
+    P6's own Driving flag (see activity_extractor.py's XML relationship
+    parsing) is used when the export carries it -- it reflects whatever
+    lag, calendars, and scheduling method P6 actually used, which this
+    pipeline has no way to fully replicate. Only falls back to the
+    date-gap heuristic below when Driving isn't present on any of a's
+    predecessor links (true for XER always, and for XML exports that
+    don't carry it).
+
+    The heuristic approximates the driving link(s) by matching each
+    predecessor's implied constraint date (offset by that link's lag,
+    when given) against a's own start/finish -- still not a full CPM
+    forward pass, but lag-aware where the data allows it. A Finish to
+    Start or Start to Start link constrains a's start; Finish to Finish
+    or Start to Finish constrains a's finish. Ties within a day both
+    count as driving (e.g. two predecessors converging the same day)."""
+    if any(link.get("driving") is not None for link in a.predecessors):
+        return [
+            (link["activity_id"], link["type"])
+            for link in a.predecessors
+            if link.get("driving") is True
+        ]
+
     my_start = _reference_date(a, "start")
     my_finish = _reference_date(a, "finish")
 
@@ -46,6 +64,9 @@ def _driving_predecessor_ids(a: Activity, by_id: dict[str, Activity]) -> list[tu
             ref = _reference_date(pred, "finish" if rel_type == "Finish to Finish" else "start")
         if ref is None or target is None:
             continue
+        lag_days = link.get("lag_days")
+        if lag_days:
+            ref = ref + timedelta(days=lag_days)
         candidates.append((abs((target - ref).days), link["activity_id"], rel_type))
 
     if not candidates:

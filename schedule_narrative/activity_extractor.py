@@ -139,7 +139,14 @@ def _build_xer_relationships(xer: XerFile, proj_id: str) -> tuple[dict[str, list
     this joins through a task_id -> task_code map first. Cross-project
     predecessor links (pred_proj_id != proj_id) are dropped -- those point
     at external/linked-project stub tasks, not real activities in this
-    schedule (see pick_primary_proj_id)."""
+    schedule (see pick_primary_proj_id).
+
+    lag_hr_cnt is a standard TASKPRED field (confirmed on a real export),
+    included so filter_engine.py's driving-relationship heuristic can
+    account for lag instead of assuming zero. TASKPRED has no equivalent
+    of XML's direct Driving flag -- driving is always None here, which
+    just means the heuristic is always used for XER (same as XML exports
+    that don't carry Driving either)."""
     task_id_to_code = {
         row.get("task_id"): row.get("task_code")
         for row in xer.get("TASK")
@@ -156,8 +163,17 @@ def _build_xer_relationships(xer: XerFile, proj_id: str) -> tuple[dict[str, list
         if not succ_id or not pred_id:
             continue
         rel_type = XER_PRED_TYPE_MAP.get(row.get("pred_type"), "Finish to Start")
-        successors.setdefault(pred_id, []).append({"activity_id": succ_id, "type": rel_type})
-        predecessors.setdefault(succ_id, []).append({"activity_id": pred_id, "type": rel_type})
+        lag_raw = (row.get("lag_hr_cnt") or "").strip()
+        try:
+            lag_days = float(lag_raw) / 8 if lag_raw else None
+        except ValueError:
+            lag_days = None
+        successors.setdefault(pred_id, []).append(
+            {"activity_id": succ_id, "type": rel_type, "lag_days": lag_days, "driving": None}
+        )
+        predecessors.setdefault(succ_id, []).append(
+            {"activity_id": pred_id, "type": rel_type, "lag_days": lag_days, "driving": None}
+        )
     return predecessors, successors
 
 
@@ -428,12 +444,34 @@ def _xml_total_float_days(activity: ET.Element, calendars: dict[str, dict]) -> O
     return _xml_date_gap_days(activity, "EarlyStartDate", "LateStartDate", calendar)
 
 
+def _xml_relationship_lag_days(rel: ET.Element) -> Optional[float]:
+    raw = (rel.findtext("Lag") or "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw) / 8  # same hours-per-workday convention as float/duration fields
+    except ValueError:
+        return None
+
+
+def _xml_relationship_driving(rel: ET.Element) -> Optional[bool]:
+    raw = (rel.findtext("Driving") or "").strip().lower()
+    return {"true": True, "false": False}.get(raw)
+
+
 def _build_xml_relationships(project: ET.Element) -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
     """Real P6 logic links from <Relationship> elements, keyed by activity
     Id -- relationships reference activities by ObjectId (an internal id
     distinct from the human-readable Id used everywhere else in this
     module), so this joins through an ObjectId -> Id map first, the same
-    pattern used for baseline linkage above."""
+    pattern used for baseline linkage above.
+
+    Driving and lag_days are P6's own computed/entered values, included
+    when the export carries them (confirmed present in the schema, not
+    populated in every real export seen so far -- same situation as
+    TotalFloat/IsCritical) so filter_engine.py's driving-relationship
+    determination can prefer them over its own date-gap heuristic, which
+    can't account for lag or P6's own scheduling calculation at all."""
     objid_to_id = {
         a.findtext("ObjectId"): a.findtext("Id")
         for a in project.findall("Activity")
@@ -448,8 +486,14 @@ def _build_xml_relationships(project: ET.Element) -> tuple[dict[str, list[dict]]
         if not pred_id or not succ_id:
             continue
         rel_type = rel.findtext("Type") or "Finish to Start"
-        successors.setdefault(pred_id, []).append({"activity_id": succ_id, "type": rel_type})
-        predecessors.setdefault(succ_id, []).append({"activity_id": pred_id, "type": rel_type})
+        lag_days = _xml_relationship_lag_days(rel)
+        driving = _xml_relationship_driving(rel)
+        successors.setdefault(pred_id, []).append(
+            {"activity_id": succ_id, "type": rel_type, "lag_days": lag_days, "driving": driving}
+        )
+        predecessors.setdefault(succ_id, []).append(
+            {"activity_id": pred_id, "type": rel_type, "lag_days": lag_days, "driving": driving}
+        )
     return predecessors, successors
 
 
