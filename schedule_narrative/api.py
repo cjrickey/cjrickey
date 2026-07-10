@@ -70,6 +70,16 @@ MAX_NARRATIVES_PER_DAY = int(_max_narratives_env) if _max_narratives_env else No
 # rather than let parsing balloon unboundedly.
 MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", "150000"))
 
+# A real P6 export can be much larger than its activity count alone
+# suggests -- resource assignments, UDFs, activity codes, and notes this
+# app never reads can bloat a file to 50+ MB for a couple thousand
+# activities. This is a safety net against a truly extreme file
+# exhausting the instance's memory (see the Render OOM incident this was
+# added for), set comfortably above real observed exports, not a
+# business limit -- upgrading the Render instance's memory tier is the
+# durable fix if this ever needs to be legitimately raised.
+MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 * 1024
+
 # Critical/near-critical path data is meant to read as a paragraph or two
 # of connected prose (see prompt_templates.py), not an enumeration -- but
 # a real project's critical path from start to finish can easily run
@@ -180,6 +190,16 @@ def _sniff_file_kind(contents: bytes) -> str:
 @app.post("/schedules/upload")
 async def upload_schedule(file: UploadFile, user_id: str = Depends(require_user)):
     contents = await file.read()
+    if len(contents) > MAX_UPLOAD_SIZE_BYTES:
+        raise HTTPException(
+            400,
+            f"This file is {len(contents) / 1024 / 1024:.0f} MB, above the "
+            f"{MAX_UPLOAD_SIZE_BYTES // 1024 // 1024} MB we currently support. P6 exports carry a lot "
+            "of data this app never reads (resource assignments, UDFs, activity codes, notes) -- "
+            "re-exporting with those options unchecked usually shrinks the file a lot without "
+            "losing anything this app uses.",
+        )
+
     kind = _sniff_file_kind(contents)
     if kind == "unknown":
         raise HTTPException(400, "Only P6 XER or XML exports are supported")
@@ -187,6 +207,10 @@ async def upload_schedule(file: UploadFile, user_id: str = Depends(require_user)
     tmp_path = f"/tmp/{uuid.uuid4()}.{kind}"
     with open(tmp_path, "wb") as f:
         f.write(contents)
+    # Free the in-memory copy now that it's on disk -- parsing reads from
+    # tmp_path, not this variable, and there's no reason to hold both the
+    # raw bytes and the parsed structure in memory at once.
+    del contents
 
     def _parse():
         if kind == "xer":
