@@ -4,11 +4,10 @@ import type { NarrativeSections, ReportType } from "@/lib/types";
 
 export type FilterState = {
   reportType: ReportType;
-  lookbackDays: string; // kept as string, like maxFloatDays -- a number-typed
-  lookaheadDays: string; // controlled input re-renders with a stale/padded
-  criticalOnly: boolean; // string on certain edit sequences (e.g. clearing
-  milestonesOnly: boolean; // then typing a digit shows "09" instead of "9")
-  maxFloatDays: string; // kept as string so the input can be legitimately empty
+  lookbackDays: string; // kept as string -- a number-typed controlled input
+  lookaheadDays: string; // re-renders with a stale/padded string on certain
+  criticalOnly: boolean; // edit sequences (e.g. clearing then typing a digit
+  milestonesOnly: boolean; // shows "09" instead of "9")
   includeScheduleMetrics: boolean;
   steer: string;
   sections: NarrativeSections;
@@ -32,7 +31,6 @@ export const DEFAULT_FILTER_STATE: FilterState = {
   lookaheadDays: "7",
   criticalOnly: false,
   milestonesOnly: false,
-  maxFloatDays: "",
   includeScheduleMetrics: true,
   steer: "",
   sections: DEFAULT_SECTIONS,
@@ -126,17 +124,6 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
         </label>
       </div>
 
-      <label className="text-sm block">
-        <span className="block text-xs uppercase tracking-wide text-ink-muted mb-2">Max float days (optional)</span>
-        <input
-          type="number"
-          value={value.maxFloatDays}
-          onChange={(e) => set("maxFloatDays", e.target.value)}
-          placeholder="No limit"
-          className={`${inputClasses} font-mono`}
-        />
-      </label>
-
       <div className="space-y-2.5">
         <label className="flex items-center gap-2 text-sm text-ink">
           <input
@@ -163,7 +150,7 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
             onChange={(e) => set("includeScheduleMetrics", e.target.checked)}
             className="h-4 w-4 rounded-sm border-rule accent-oxide"
           />
-          Include schedule metrics (variance, float, critical path)
+          Include schedule metrics (variance, critical path)
         </label>
       </div>
 

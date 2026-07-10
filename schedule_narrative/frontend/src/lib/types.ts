@@ -32,7 +32,6 @@ export type NarrativeRequest = {
   wbs_node_names: string[] | null;
   critical_only: boolean;
   milestones_only: boolean;
-  max_float_days: number | null;
   include_schedule_metrics: boolean;
   steer: string | null;
   sections: NarrativeSections;

@@ -93,11 +93,12 @@ MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 
 
 # The main report body groups activities by area and can reasonably
 # summarize a few hundred -- still much less than a "monster" schedule's
-# full activity count, since date range, WBS scope, and (absent an
-# explicit max_float_days) the default "important activities only"
-# narrowing in filter_engine (critical, or float < 25 days) all narrow
-# this before it ever reaches this check. This cap is a safety net for
-# what's left after that narrowing, not the primary mechanism.
+# full activity count, since date range, WBS scope, and the default
+# "important activities only" narrowing in filter_engine (critical, or
+# float < 25 days -- never a user-facing threshold, see filter_engine.py)
+# all narrow this before it ever reaches this check. This cap is a
+# safety net for what's left after that narrowing, not the primary
+# mechanism.
 MAX_REPORT_ACTIVITIES = int(os.environ.get("MAX_REPORT_ACTIVITIES", "500"))
 
 
@@ -306,7 +307,6 @@ class NarrativeRequest(BaseModel):
     wbs_node_names: Optional[list[str]] = None
     critical_only: bool = False
     milestones_only: bool = False
-    max_float_days: Optional[float] = None
     include_schedule_metrics: bool = True
     steer: Optional[str] = None  # optional freeform tone instruction, narrative only
     sections: NarrativeSections = NarrativeSections()
@@ -336,7 +336,6 @@ async def generate_narrative(
             wbs_node_names=req.wbs_node_names,
             critical_only=req.critical_only,
             milestones_only=req.milestones_only,
-            max_float_days=req.max_float_days,
         )
         payload = apply_filters(activities, data_date, spec)
         _check_payload_size(payload, "weekly_oac")
@@ -345,7 +344,6 @@ async def generate_narrative(
     elif req.report_type == "monthly_executive":
         payload = build_monthly_executive_payload(
             activities, data_date, req.wbs_node_names, req.lookback_days, req.lookahead_days,
-            req.max_float_days,
         )
         _check_payload_size(payload, "monthly_executive")
         generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer, sections)

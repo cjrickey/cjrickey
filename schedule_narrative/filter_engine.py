@@ -223,8 +223,6 @@ class FilterSpec:
     critical_only: bool = False
     milestones_only: bool = False
     include_variance: bool = True
-    max_float_days: Optional[float] = None  # explicit user-set filter, off by default. Activities with no
-    # float value (e.g. completed activities) are never excluded by this -- it only applies where float exists.
 
 
 def _matches_wbs_scope(wbs_path: str, node_names: list[str]) -> bool:
@@ -254,28 +252,23 @@ def apply_filters(
         # NOTE: driving_path_flag from the XER can be stale (not recomputed
         # before export) or ambiguous under multiple-longest-path scheduling.
         # "Critical" is defined here as total_float_days <= 0, computed fresh
-        # from the data, not the stored flag. critical_only is effectively a
-        # shortcut for max_float_days=0, and the two compose: if both are
-        # set, the tighter constraint wins naturally.
+        # from the data, not the stored flag.
         if spec.critical_only and not (a.total_float_days is not None and a.total_float_days <= 0):
             continue
         if spec.milestones_only and not a.is_milestone:
             continue
-        if spec.max_float_days is not None:
-            # Explicit user-set filter -- respected exactly as given, no
-            # additional narrowing on top.
-            if a.total_float_days is not None and a.total_float_days > spec.max_float_days:
-                continue
         elif not spec.milestones_only:
-            # No explicit float filter, and not an explicit "milestones
-            # only" request (which means show every milestone in the
-            # window, not just the important-looking ones) -- default to
-            # "important" activities only: critical, or comfortably close
-            # to it (float < 25 days), so an unscoped report on a huge
-            # schedule doesn't try to narrate every single activity in
-            # the window. An activity with no float value at all (e.g.
-            # missing data) still passes here; only a real float >= 25
-            # excludes it.
+            # Not an explicit "milestones only" request (which means show
+            # every milestone in the window, not just the important-looking
+            # ones) -- default to "important" activities only: critical, or
+            # comfortably close to it (float < 25 days), so an unscoped
+            # report on a huge schedule doesn't try to narrate every single
+            # activity in the window. An activity with no float value at all
+            # (e.g. missing data) still passes here; only a real float >= 25
+            # excludes it. No user-facing float threshold is exposed here --
+            # this pipeline can't guarantee derived float values match P6
+            # exactly (see activity_extractor.py), so float only ever drives
+            # this internal narrowing, never a number a user sets or sees.
             if not a.is_critical and not (a.total_float_days is not None and a.total_float_days < 25):
                 continue
 
@@ -317,7 +310,6 @@ def apply_filters(
             "wbs_node_names": spec.wbs_node_names,
             "critical_only": spec.critical_only,
             "milestones_only": spec.milestones_only,
-            "max_float_days": spec.max_float_days,
         },
         "completed_activities": [serialize(a) for a in completed],
         "upcoming_activities": [serialize(a) for a in upcoming],
@@ -332,7 +324,6 @@ def build_monthly_executive_payload(
     wbs_node_names: Optional[list[str]] = None,
     lookback_days: int = 30,
     lookahead_days: int = 30,
-    max_float_days: Optional[float] = None,
 ) -> dict:
     """Monthly executive payload has a different shape than the weekly
     report: a flat list of milestones (with variance vs. target) plus a
@@ -356,15 +347,16 @@ def build_monthly_executive_payload(
     critical = [a for a in scoped if a.is_critical and not a.is_milestone]
 
     def is_important(a: Activity) -> bool:
-        # Milestones are always worth citing regardless of float. Otherwise:
-        # an explicit max_float_days is respected exactly as given; absent
-        # that, default to "important" only -- critical, or comfortably
-        # close to it (float < 25 days) -- so an unscoped report on a huge
-        # schedule doesn't try to cite every single activity in the period.
+        # Milestones are always worth citing regardless of float. Otherwise,
+        # default to "important" only -- critical, or comfortably close to
+        # it (float < 25 days) -- so an unscoped report on a huge schedule
+        # doesn't try to cite every single activity in the period. No
+        # user-facing float threshold is exposed here -- this pipeline can't
+        # guarantee derived float values match P6 exactly (see
+        # activity_extractor.py), so float only ever drives this internal
+        # narrowing, never a number a user sets or sees.
         if a.is_milestone:
             return True
-        if max_float_days is not None:
-            return a.total_float_days is None or a.total_float_days <= max_float_days
         return a.is_critical or (a.total_float_days is not None and a.total_float_days < 25)
 
     period_start = data_date - timedelta(days=lookback_days)
@@ -443,22 +435,15 @@ if __name__ == "__main__":
     data_date = get_data_date(xer, proj_id)
     activities = extract_activities(xer, proj_id)
 
-    # No WBS scope, no float filter -- shows the raw "riding the data date" mess
-    print("=== Unscoped, no float filter (the mess) ===")
+    # No WBS scope -- shows the raw "riding the data date" mess
+    print("=== Unscoped (the mess) ===")
     spec_raw = FilterSpec(report_type="weekly_oac", lookback_days=7, lookahead_days=7)
     result_raw = apply_filters(activities, data_date, spec_raw)
     print(f"Completed: {len(result_raw['completed_activities'])} | Upcoming: {len(result_raw['upcoming_activities'])}")
     print()
 
-    # Same scope, user sets max float = 10 days
-    print("=== Unscoped, max_float_days=10 ===")
-    spec_float = FilterSpec(report_type="weekly_oac", lookback_days=7, lookahead_days=7, max_float_days=10)
-    result_float = apply_filters(activities, data_date, spec_float)
-    print(f"Completed: {len(result_float['completed_activities'])} | Upcoming: {len(result_float['upcoming_activities'])}")
-    print()
-
-    # WBS-scoped to one area, no float filter
-    print("=== WBS scoped to 'B1 -- Core E', no float filter ===")
+    # WBS-scoped to one area
+    print("=== WBS scoped to 'B1 -- Core E' ===")
     spec_wbs = FilterSpec(report_type="weekly_oac", lookback_days=7, lookahead_days=7, wbs_node_names=["B1 -- Core E"])
     result_wbs = apply_filters(activities, data_date, spec_wbs)
     print(f"Completed: {len(result_wbs['completed_activities'])} | Upcoming: {len(result_wbs['upcoming_activities'])}")

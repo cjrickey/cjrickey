@@ -59,7 +59,6 @@ function ScheduleNarrativeApp() {
     try {
       const token = await getToken();
       if (!token) throw new Error("Not signed in");
-      const maxFloatDays = filters.maxFloatDays.trim() === "" ? null : Number(filters.maxFloatDays);
       const lookbackDays = filters.lookbackDays.trim() === "" ? 7 : Number(filters.lookbackDays);
       const lookaheadDays = filters.lookaheadDays.trim() === "" ? 7 : Number(filters.lookaheadDays);
       const res = await generateNarrative(
@@ -71,7 +70,6 @@ function ScheduleNarrativeApp() {
           wbs_node_names: checkedWbsNames.size > 0 ? Array.from(checkedWbsNames) : null,
           critical_only: filters.criticalOnly,
           milestones_only: filters.milestonesOnly,
-          max_float_days: maxFloatDays,
           include_schedule_metrics: filters.includeScheduleMetrics,
           steer: filters.steer.trim() === "" ? null : filters.steer.trim(),
           sections: filters.sections,
