@@ -210,7 +210,7 @@ function ScheduleNarrativeApp() {
             {result && (
               <div className="border-t border-rule pt-8">
                 <h2 className="text-xs font-medium uppercase tracking-wider text-ink-muted mb-4">Narrative</h2>
-                <NarrativeOutput narrative={result.narrative} filteredPayload={result.filtered_payload} />
+                <NarrativeOutput narrative={result.narrative} />
               </div>
             )}
           </div>
