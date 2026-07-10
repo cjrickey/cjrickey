@@ -70,6 +70,52 @@ MAX_NARRATIVES_PER_DAY = int(_max_narratives_env) if _max_narratives_env else No
 # rather than let parsing balloon unboundedly.
 MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", "150000"))
 
+# Critical/near-critical path data is meant to read as a paragraph or two
+# of connected prose (see prompt_templates.py), not an enumeration -- a
+# real driving critical path is a short chain even on a huge project, so
+# a count this high only happens on a badly-scoped or pathological
+# request. remaining_critical_path is NOT windowed by date (deliberately,
+# so it always covers the full remaining chain to completion) -- only
+# WBS scope shrinks it, so the message below must say that, not "narrow
+# the date range," which wouldn't do anything for this one.
+MAX_PATH_NARRATIVE_ACTIVITIES = int(os.environ.get("MAX_PATH_NARRATIVE_ACTIVITIES", "40"))
+
+# The main report body groups activities by area and can reasonably
+# summarize a few hundred -- still much less than a "monster" schedule's
+# full activity count, since both date range and WBS scope narrow this.
+MAX_REPORT_ACTIVITIES = int(os.environ.get("MAX_REPORT_ACTIVITIES", "500"))
+
+
+def _check_payload_size(payload: dict, report_type: str) -> None:
+    path_lists = {
+        "remaining critical path": payload.get("remaining_critical_path", []),
+        "near-critical": payload.get("near_critical_activities", []),
+        "critical": payload.get("critical_activities", []),
+    }
+    for label, items in path_lists.items():
+        if len(items) > MAX_PATH_NARRATIVE_ACTIVITIES:
+            raise HTTPException(
+                400,
+                f"This schedule has {len(items)} {label} activities in scope -- too many to "
+                f"narrate as a short critical-path narrative (limit {MAX_PATH_NARRATIVE_ACTIVITIES}). "
+                "Narrow the WBS scope to a smaller area of the project and try again.",
+            )
+
+    if report_type == "weekly_oac":
+        total = len(payload.get("completed_activities", [])) + len(payload.get("upcoming_activities", []))
+    else:
+        total = (
+            len(payload.get("completed_this_period", []))
+            + len(payload.get("starting_this_period", []))
+            + len(payload.get("milestones", []))
+        )
+    if total > MAX_REPORT_ACTIVITIES:
+        raise HTTPException(
+            400,
+            f"This report would cover {total} activities, too many to narrate well "
+            f"(limit {MAX_REPORT_ACTIVITIES}). Narrow the date range and/or WBS scope and try again.",
+        )
+
 
 def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
     """Nested tree structure the frontend WBS selector consumes directly."""
@@ -266,12 +312,14 @@ async def generate_narrative(
             max_float_days=req.max_float_days,
         )
         payload = apply_filters(activities, data_date, spec)
+        _check_payload_size(payload, "weekly_oac")
         generate = lambda: generate_weekly_oac_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     elif req.report_type == "monthly_executive":
         payload = build_monthly_executive_payload(
             activities, data_date, req.wbs_node_names, req.lookback_days, req.lookahead_days
         )
+        _check_payload_size(payload, "monthly_executive")
         generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer, sections)
 
     else:
