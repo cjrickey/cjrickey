@@ -27,6 +27,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, UploadFile, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -236,7 +237,15 @@ async def generate_narrative(
         raise HTTPException(400, f"Unknown report_type: {req.report_type}")
 
     try:
-        narrative = generate()
+        # generate() makes a blocking, several-minutes-possible Anthropic
+        # call (see narrative_generator._call_claude). This endpoint is
+        # async def, and Render runs a single Uvicorn worker (no --workers
+        # flag) -- calling generate() directly would block that worker's
+        # entire event loop for the whole generation, freezing the backend
+        # for every other request (including Render's own health check)
+        # until it finished. run_in_threadpool hands it to a worker thread
+        # instead, so the event loop stays free to serve everyone else.
+        narrative = await run_in_threadpool(generate)
     except KeyError:
         # Unhandled exceptions bypass CORSMiddleware in Starlette's default
         # middleware stack, so the browser reports an opaque CORS failure
