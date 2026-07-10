@@ -81,14 +81,14 @@ MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", 
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 * 1024
 
 # Critical/near-critical path data is meant to read as a paragraph or two
-# of connected prose (see prompt_templates.py), not an enumeration -- but
-# a real project's critical path from start to finish can easily run
-# past 40 activities, so the cap needs real headroom above that, not a
-# pure "short chain" assumption. remaining_critical_path is NOT windowed
-# by date (deliberately, so it always covers the full remaining chain to
-# completion) -- only WBS scope shrinks it, so the message below must
-# say that, not "narrow the date range," which wouldn't do anything for
-# this one.
+# of connected prose per path (see prompt_templates.py), not an
+# enumeration -- but a real project's critical path from start to finish
+# can easily run past 40 activities, so the cap needs real headroom above
+# that, not a pure "short chain" assumption. critical_paths is NOT
+# windowed by date (deliberately, so it always covers the full remaining
+# chain to completion) -- only WBS scope shrinks it, so the message below
+# must say that, not "narrow the date range," which wouldn't do anything
+# for this one.
 MAX_PATH_NARRATIVE_ACTIVITIES = int(os.environ.get("MAX_PATH_NARRATIVE_ACTIVITIES", "100"))
 
 # The main report body groups activities by area and can reasonably
@@ -98,16 +98,17 @@ MAX_REPORT_ACTIVITIES = int(os.environ.get("MAX_REPORT_ACTIVITIES", "500"))
 
 
 def _check_payload_size(payload: dict, report_type: str) -> None:
+    critical_path_activities = sum(len(p["activities"]) for p in payload.get("critical_paths", []))
     path_lists = {
-        "remaining critical path": payload.get("remaining_critical_path", []),
-        "near-critical": payload.get("near_critical_activities", []),
-        "critical": payload.get("critical_activities", []),
+        "critical path": critical_path_activities,
+        "near-critical": len(payload.get("near_critical_activities", [])),
+        "critical": len(payload.get("critical_activities", [])),
     }
-    for label, items in path_lists.items():
-        if len(items) > MAX_PATH_NARRATIVE_ACTIVITIES:
+    for label, count in path_lists.items():
+        if count > MAX_PATH_NARRATIVE_ACTIVITIES:
             raise HTTPException(
                 400,
-                f"This schedule has {len(items)} {label} activities in scope -- too many to "
+                f"This schedule has {count} {label} activities in scope -- too many to "
                 f"narrate as a short critical-path narrative (limit {MAX_PATH_NARRATIVE_ACTIVITIES}). "
                 "Narrow the WBS scope to a smaller area of the project and try again.",
             )

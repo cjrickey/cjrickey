@@ -93,7 +93,7 @@ class Activity:
     # Deliberately excluded from to_dict()/serialize() for the main
     # completed/upcoming lists (would bloat every activity's JSON); only
     # surfaced, filtered to critical-to-critical links, by
-    # filter_engine._remaining_critical_path for the critical path narrative.
+    # filter_engine._top_critical_paths for the critical path narrative.
     predecessors: list[dict] = field(default_factory=list)
     successors: list[dict] = field(default_factory=list)
 
@@ -118,7 +118,7 @@ class Activity:
         """Full round-trip representation for storage.py -- unlike to_dict(),
         includes predecessors/successors. Those are left out of to_dict()
         to keep the per-activity narrative payload lean (only
-        filter_engine._remaining_critical_path needs them, already filtered
+        filter_engine._top_critical_paths needs them, already filtered
         down to the handful of critical activities), but storage.py persists
         whatever this returns, so leaving them out here would silently
         drop real P6 relationship data the moment a schedule is saved --

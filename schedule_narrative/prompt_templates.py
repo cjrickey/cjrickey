@@ -175,7 +175,7 @@ class OptionalSections:
     # existing behavior) names the actual P6 relationship type on each
     # driving link (e.g. "Start to Start"); False keeps the sequencing
     # itself (still grounded in real predecessor/successor data -- see
-    # filter_engine._remaining_critical_path) but describes it in plain
+    # filter_engine._top_critical_paths) but describes it in plain
     # words like "next" instead of naming the tie, for narratives shown
     # to an audience who shouldn't see the underlying schedule logic.
     show_relationship_types: bool = True
@@ -207,47 +207,55 @@ Add a "Critical Path Narrative" section with two subsections:
 "This Period": cover only the critical activities among what's completed or upcoming this \
 period -- which finished, which are underway, which are due to start.
 
-"Remaining Critical Path to Completion": cover the full remaining critical path data given, \
-regardless of the report's own date window -- this is the entire chain of not-yet-completed \
-critical work still standing between now and project completion, and must never be trimmed \
-to only what falls inside the reporting period.
+"Remaining Critical Path to Completion": on a schedule running badly behind, many activities \
+can be critical at once -- not one critical path but several parallel ones. The data below \
+lists up to three distinct paths -- primary, secondary, tertiary -- already ranked from most \
+negative float (primary, the worst) to least negative (tertiary). Cover each path given as \
+its own short paragraph, in that order, naming it by its rank ("the primary critical path," \
+etc.). A schedule with only one or two distinct paths simply has that many entries -- cover \
+only what's given, never invent a second or third path to round out three. Each path covers \
+the entire remaining chain of not-yet-completed critical work on that path, regardless of the \
+report's own date window, and must never be trimmed to only what falls inside the reporting \
+period.
 
 Both subsections must read as connected narrative prose describing what the work is and how \
 it flows from one activity to the next -- not a list of float-status facts. Do not state or \
 restate float/criticality as its own sentence (e.g. "both activities sit at zero float," "this \
 activity has no slack") -- criticality is already established by an activity's presence in this \
-section, so spend the prose on the work itself and its sequencing instead.
+section, so spend the prose on the work itself and its sequencing instead. The one exception: \
+it is fair to state a path's worst float value once, since that severity is the actual reason \
+one path ranks primary and another secondary (e.g. "the primary critical path is running \
+roughly 12 days behind").
 """
 
 _CRITICAL_PATH_NARRATIVE_WITH_TYPES = _CRITICAL_PATH_NARRATIVE_PREAMBLE + """
-In "Remaining Critical Path to Completion," each entry's predecessor/successor links are the \
-real, driving P6 schedule logic ties (actual relationships from the file, already narrowed to \
-the one(s) that actually constrain that activity's date -- not every logic tie in the file) \
--- use these, and only these, to state how activities connect: a "Finish to Start" link means \
-the predecessor must finish before the successor starts; "Start to Start" means they start \
-together; "Finish to Finish" means they finish together; "Start to Finish" means the \
-predecessor's start drives the successor's finish. Phrase each link according to its actual \
-type -- do not default to "leads to" or "enables" phrasing for a non-Finish-to-Start link. If \
-an activity has no predecessor or successor link given, state only that it is critical and \
-when it's due, without implying a connection to any other activity. Never assert that one \
-activity's completion triggers, causes, or enables another based on their names, order, or \
-timing alone -- only a given predecessor/successor link is a valid basis for a sequencing \
-claim.
+Within each path, every activity's predecessor/successor links are the real, driving P6 \
+schedule logic ties (actual relationships from the file, already narrowed to the one(s) that \
+actually constrain that activity's date -- not every logic tie in the file) -- use these, and \
+only these, to state how activities connect: a "Finish to Start" link means the predecessor \
+must finish before the successor starts; "Start to Start" means they start together; "Finish \
+to Finish" means they finish together; "Start to Finish" means the predecessor's start drives \
+the successor's finish. Phrase each link according to its actual type -- do not default to \
+"leads to" or "enables" phrasing for a non-Finish-to-Start link. If an activity has no \
+predecessor or successor link given, state only that it is critical and when it's due, \
+without implying a connection to any other activity. Never assert that one activity's \
+completion triggers, causes, or enables another based on their names, order, or timing alone \
+-- only a given predecessor/successor link is a valid basis for a sequencing claim.
 
 Focus specifically on critical-path continuity and risk rather than repeating other sections \
 verbatim.\
 """
 
 _CRITICAL_PATH_NARRATIVE_GENERIC = _CRITICAL_PATH_NARRATIVE_PREAMBLE + """
-In "Remaining Critical Path to Completion," each entry's predecessor/successor links are the \
-real, driving P6 schedule logic ties (actual relationships from the file, already narrowed to \
-the one(s) that actually constrain that activity's date -- not every logic tie in the file) \
--- use these, and only these, as the basis for how activities connect, but never name or \
-reveal the formal relationship type (do not write "Finish to Start," "Start to Start," or any \
-similar term). Instead describe the connection in plain, ordinary sequencing language: where \
-one activity must finish before the next starts, say it "comes next" or "follows"; where two \
-activities proceed together (starting or finishing at the same time), say they run "alongside" \
-or "together with" one another. Keep the sequencing itself accurate -- concurrent work must \
+Within each path, every activity's predecessor/successor links are the real, driving P6 \
+schedule logic ties (actual relationships from the file, already narrowed to the one(s) that \
+actually constrain that activity's date -- not every logic tie in the file) -- use these, and \
+only these, as the basis for how activities connect, but never name or reveal the formal \
+relationship type (do not write "Finish to Start," "Start to Start," or any similar term). \
+Instead describe the connection in plain, ordinary sequencing language: where one activity \
+must finish before the next starts, say it "comes next" or "follows"; where two activities \
+proceed together (starting or finishing at the same time), say they run "alongside" or \
+"together with" one another. Keep the sequencing itself accurate -- concurrent work must \
 still read as concurrent, not as one-after-another -- just without naming the tie. If an \
 activity has no predecessor or successor link given, state only that it is critical and when \
 it's due, without implying a connection to any other activity. Never assert that one \

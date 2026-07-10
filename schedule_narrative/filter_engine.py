@@ -54,22 +54,17 @@ def _driving_predecessor_ids(a: Activity, by_id: dict[str, Activity]) -> list[tu
     return [(activity_id, rel_type) for gap, activity_id, rel_type in candidates if gap <= best_gap + 1]
 
 
-def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
-    """All not-yet-completed critical activities/milestones across the
-    *entire* remaining schedule -- not windowed to a report period -- in
-    chronological order: the actual chain of critical work still standing
-    between now and project completion. Used by the critical_path_narrative
-    bolt-on section, which must always cover this in full regardless of the
-    report's own lookback/lookahead window (weekly) or reporting period
-    (monthly).
+def _build_critical_graph(scoped_activities: list[Activity]):
+    """All not-yet-completed critical activities across the *entire*
+    remaining schedule -- not windowed to a report period -- plus the
+    driving predecessor/successor graph between them. Shared by
+    _top_critical_paths; not used directly outside this module.
 
     predecessors/successors here are real P6 logic links (TASKPRED/
     Relationship, see activity_extractor.py) -- never inferred from names
     or date adjacency -- narrowed to only the driving tie(s) via
     _driving_predecessor_ids, not every logic link that happens to exist
-    between two critical activities. An activity with no driving link
-    simply has empty lists; that's a fact about this schedule's logic, not
-    a gap to paper over."""
+    between two critical activities."""
     remaining = [a for a in scoped_activities if a.is_critical and a.status != "completed"]
     remaining.sort(key=lambda a: parse_p6_datetime(a.planned_start) or datetime.max)
     by_id = {a.activity_id: a for a in remaining}
@@ -80,11 +75,67 @@ def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
         for pred_id, rel_type in preds:
             driving_succs.setdefault(pred_id, []).append((succ_id, rel_type))
 
+    return remaining, by_id, driving_preds, driving_succs
+
+
+def _trace_chain_backward(
+    end_id: str,
+    by_id: dict[str, Activity],
+    driving_preds: dict[str, list[tuple[str, str]]],
+) -> list[str]:
+    """Walk backward from a chain's endpoint via driving predecessor links,
+    picking the more negative-float predecessor at any branch point (the
+    worse branch is the one actually driving the schedule), until there's
+    no further driving predecessor. Returns activity ids in chronological
+    order (earliest first)."""
+    chain = [end_id]
+    seen = {end_id}
+    current = end_id
+    while True:
+        preds = [p for p in driving_preds.get(current, []) if p[0] not in seen]
+        if not preds:
+            break
+
+        def float_of(pred: tuple[str, str]) -> float:
+            f = by_id[pred[0]].total_float_days
+            return f if f is not None else 0
+
+        current = min(preds, key=float_of)[0]
+        chain.append(current)
+        seen.add(current)
+    chain.reverse()
+    return chain
+
+
+def _top_critical_paths(scoped_activities: list[Activity], max_paths: int = 3) -> list[dict]:
+    """When a schedule is badly behind, many activities can be critical at
+    once -- not one critical path but several parallel ones. Traces each
+    distinct chain (walking backward from every activity with no driving
+    successor, i.e. every chain's endpoint) and ranks them by their worst
+    (most negative) float, since that's what actually makes one chain more
+    critical than another. Returns up to max_paths chains, most negative
+    first -- "primary" is the worst, down to "tertiary." A schedule with
+    fewer than max_paths distinct chains just returns however many exist;
+    none are invented to fill out three."""
+    remaining, by_id, driving_preds, driving_succs = _build_critical_graph(scoped_activities)
+    if not remaining:
+        return []
+
+    endpoints = [a.activity_id for a in remaining if not driving_succs.get(a.activity_id)]
+    chains = [_trace_chain_backward(end_id, by_id, driving_preds) for end_id in endpoints]
+
+    def worst_float(chain: list[str]) -> float:
+        floats = [by_id[aid].total_float_days for aid in chain if by_id[aid].total_float_days is not None]
+        return min(floats) if floats else 0
+
+    chains.sort(key=worst_float)
+
     def named(links: list[tuple[str, str]]) -> list[dict]:
         return [{"name": by_id[activity_id].name, "relationship_type": rel_type} for activity_id, rel_type in links]
 
-    return [
-        {
+    def activity_dict(activity_id: str) -> dict:
+        a = by_id[activity_id]
+        return {
             "name": a.name,
             "wbs_path": a.wbs_path,
             "is_milestone": a.is_milestone,
@@ -92,10 +143,18 @@ def _remaining_critical_path(scoped_activities: list[Activity]) -> list[dict]:
             "planned_start": a.planned_start,
             "planned_finish": a.planned_finish,
             "float_days": a.total_float_days,
-            "predecessors": named(driving_preds.get(a.activity_id, [])),
-            "successors": named(driving_succs.get(a.activity_id, [])),
+            "predecessors": named(driving_preds.get(activity_id, [])),
+            "successors": named(driving_succs.get(activity_id, [])),
         }
-        for a in remaining
+
+    ranks = ["primary", "secondary", "tertiary"]
+    return [
+        {
+            "rank": ranks[i],
+            "worst_float_days": worst_float(chain),
+            "activities": [activity_dict(aid) for aid in chain],
+        }
+        for i, chain in enumerate(chains[:max_paths])
     ]
 
 
@@ -195,7 +254,7 @@ def apply_filters(
         },
         "completed_activities": [serialize(a) for a in completed],
         "upcoming_activities": [serialize(a) for a in upcoming],
-        "remaining_critical_path": _remaining_critical_path(scoped_for_chain),
+        "critical_paths": _top_critical_paths(scoped_for_chain),
     }
 
 
@@ -217,8 +276,8 @@ def build_monthly_executive_payload(
     roughly the last/next month relative to data_date -- so the executive
     summary and critical_path_narrative have real names to cite instead of
     only aggregate counts (milestones/critical_path_summary cover overall
-    status, not "what happened this period"). remaining_critical_path is
-    explicitly NOT windowed -- see _remaining_critical_path."""
+    status, not "what happened this period"). critical_paths is explicitly
+    NOT windowed -- see _top_critical_paths."""
     scoped = [
         a for a in activities
         if not wbs_node_names or _matches_wbs_scope(a.wbs_path, wbs_node_names)
@@ -297,7 +356,7 @@ def build_monthly_executive_payload(
         },
         "critical_activities": [activity_float_dict(a) for a in critical],
         "near_critical_activities": [activity_float_dict(a) for a in near_critical],
-        "remaining_critical_path": _remaining_critical_path(scoped),
+        "critical_paths": _top_critical_paths(scoped),
     }
 
 
