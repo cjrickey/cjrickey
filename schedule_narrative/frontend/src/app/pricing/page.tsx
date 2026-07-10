@@ -41,7 +41,7 @@ function PricingContent() {
     <div className="min-h-screen">
       <div className="mx-auto max-w-md px-6 py-16">
         <div className="flex items-center justify-between border-b border-rule pb-6 mb-10">
-          <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative Generator</h1>
           <UserButton />
         </div>
 

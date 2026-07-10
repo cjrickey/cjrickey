@@ -33,6 +33,7 @@ function ScheduleNarrativeApp() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [result, setResult] = useState<NarrativeResponse | null>(null);
+  const [billingError, setBillingError] = useState<string | null>(null);
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -87,10 +88,15 @@ function ScheduleNarrativeApp() {
   }
 
   async function handleManageBilling() {
-    const token = await getToken();
-    if (!token) return;
-    const { portal_url } = await createPortalSession(token);
-    window.location.href = portal_url;
+    setBillingError(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Not signed in");
+      const { portal_url } = await createPortalSession(token);
+      window.location.href = portal_url;
+    } catch (err) {
+      setBillingError(err instanceof Error ? err.message : "Couldn't open billing portal");
+    }
   }
 
   return (
@@ -98,14 +104,16 @@ function ScheduleNarrativeApp() {
       <div className="mx-auto max-w-4xl px-6 py-12">
         <header className="border-b border-rule pb-6 mb-8 flex items-start justify-between gap-6">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative</h1>
+            <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative Generator</h1>
             <p className="text-sm text-ink-muted mt-1">
               Upload a P6 XER or XML export. Generate a weekly OAC or monthly executive narrative grounded strictly in
               the schedule&rsquo;s own data.
             </p>
           </div>
           <div className="flex items-center gap-4 shrink-0">
-            {billing.subscribed ? (
+            {billing.status === "admin" ? (
+              <span className="text-sm text-ink-muted">Admin access</span>
+            ) : billing.subscribed ? (
               <button
                 type="button"
                 onClick={handleManageBilling}
@@ -126,6 +134,8 @@ function ScheduleNarrativeApp() {
             <UserButton />
           </div>
         </header>
+
+        {billingError && <p className="-mt-4 mb-8 text-sm text-oxide">{billingError}</p>}
 
         {!schedule ? (
           <UploadPanel onUpload={handleUpload} uploading={uploading} error={uploadError} />

@@ -45,9 +45,8 @@ export function UploadPanel({ onUpload, uploading, error }: UploadPanelProps) {
         {uploading ? "Uploading…" : "Drop a P6 .xer or .xml export, or click to choose a file"}
       </p>
       <p className="mt-2 text-xs text-ink-muted">
-        Exporting as .xml? Later versions of P6 give you the option to include the Project Baseline at export time --
-        check that box to unlock variance narration. A .xer export never carries baseline data, regardless of P6
-        version.
+        XMLs can be exported with the Project Baseline included -- check that box at export time to unlock variance
+        narration. A .xer export never carries baseline data.
       </p>
       {error && <p className="mt-3 text-sm text-oxide">{error}</p>}
     </div>
