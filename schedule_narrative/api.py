@@ -93,7 +93,11 @@ MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 
 
 # The main report body groups activities by area and can reasonably
 # summarize a few hundred -- still much less than a "monster" schedule's
-# full activity count, since both date range and WBS scope narrow this.
+# full activity count, since date range, WBS scope, and (absent an
+# explicit max_float_days) the default "important activities only"
+# narrowing in filter_engine (critical, or float < 25 days) all narrow
+# this before it ever reaches this check. This cap is a safety net for
+# what's left after that narrowing, not the primary mechanism.
 MAX_REPORT_ACTIVITIES = int(os.environ.get("MAX_REPORT_ACTIVITIES", "500"))
 
 
@@ -328,7 +332,8 @@ async def generate_narrative(
 
     elif req.report_type == "monthly_executive":
         payload = build_monthly_executive_payload(
-            activities, data_date, req.wbs_node_names, req.lookback_days, req.lookahead_days
+            activities, data_date, req.wbs_node_names, req.lookback_days, req.lookahead_days,
+            req.max_float_days,
         )
         _check_payload_size(payload, "monthly_executive")
         generate = lambda: generate_monthly_executive_narrative(payload, req.include_schedule_metrics, req.steer, sections)

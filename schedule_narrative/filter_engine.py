@@ -261,12 +261,23 @@ def apply_filters(
             continue
         if spec.milestones_only and not a.is_milestone:
             continue
-        if (
-            spec.max_float_days is not None
-            and a.total_float_days is not None
-            and a.total_float_days > spec.max_float_days
-        ):
-            continue
+        if spec.max_float_days is not None:
+            # Explicit user-set filter -- respected exactly as given, no
+            # additional narrowing on top.
+            if a.total_float_days is not None and a.total_float_days > spec.max_float_days:
+                continue
+        elif not spec.milestones_only:
+            # No explicit float filter, and not an explicit "milestones
+            # only" request (which means show every milestone in the
+            # window, not just the important-looking ones) -- default to
+            # "important" activities only: critical, or comfortably close
+            # to it (float < 25 days), so an unscoped report on a huge
+            # schedule doesn't try to narrate every single activity in
+            # the window. An activity with no float value at all (e.g.
+            # missing data) still passes here; only a real float >= 25
+            # excludes it.
+            if not a.is_critical and not (a.total_float_days is not None and a.total_float_days < 25):
+                continue
 
         if a.status == "completed" and a.actual_finish:
             af = parse_p6_datetime(a.actual_finish)
@@ -321,6 +332,7 @@ def build_monthly_executive_payload(
     wbs_node_names: Optional[list[str]] = None,
     lookback_days: int = 30,
     lookahead_days: int = 30,
+    max_float_days: Optional[float] = None,
 ) -> dict:
     """Monthly executive payload has a different shape than the weekly
     report: a flat list of milestones (with variance vs. target) plus a
@@ -343,11 +355,25 @@ def build_monthly_executive_payload(
     milestones = [a for a in scoped if a.is_milestone]
     critical = [a for a in scoped if a.is_critical and not a.is_milestone]
 
+    def is_important(a: Activity) -> bool:
+        # Milestones are always worth citing regardless of float. Otherwise:
+        # an explicit max_float_days is respected exactly as given; absent
+        # that, default to "important" only -- critical, or comfortably
+        # close to it (float < 25 days) -- so an unscoped report on a huge
+        # schedule doesn't try to cite every single activity in the period.
+        if a.is_milestone:
+            return True
+        if max_float_days is not None:
+            return a.total_float_days is None or a.total_float_days <= max_float_days
+        return a.is_critical or (a.total_float_days is not None and a.total_float_days < 25)
+
     period_start = data_date - timedelta(days=lookback_days)
     period_end = data_date + timedelta(days=lookahead_days)
     completed_this_period = []
     starting_this_period = []
     for a in scoped:
+        if not is_important(a):
+            continue
         if a.status == "completed" and a.actual_finish:
             af = parse_p6_datetime(a.actual_finish)
             if af and period_start <= af <= data_date:
