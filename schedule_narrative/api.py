@@ -118,6 +118,18 @@ def _check_payload_size(payload: dict, report_type: str) -> None:
         )
 
 
+def _seq_key(raw: Optional[str]) -> tuple:
+    """WBS sequence numbers must sort numerically (2 before 10), not as
+    plain strings -- a lexicographic sort scrambles any level with more
+    than 9 children ("10" sorts before "2"). Falls back to the raw string
+    (grouped after every real number) only for the rare non-numeric value,
+    so a single bad row doesn't crash the whole tree build."""
+    try:
+        return (0, float(raw))
+    except (TypeError, ValueError):
+        return (1, raw or "")
+
+
 def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
     """Nested tree structure the frontend WBS selector consumes directly."""
     nodes = {r["wbs_id"]: r for r in xer.get("PROJWBS") if r.get("proj_id") == proj_id}
@@ -130,7 +142,7 @@ def _build_wbs_tree(xer, proj_id: str) -> list[dict]:
         node = nodes[wbs_id]
         child_ids = sorted(
             children_map.get(wbs_id, []),
-            key=lambda x: nodes[x].get("seq_num", "0"),
+            key=lambda x: _seq_key(nodes[x].get("seq_num")),
         )
         result = {"name": node.get("wbs_name") or node.get("wbs_short_name") or ""}
         if child_ids:
@@ -153,7 +165,7 @@ def _build_wbs_tree_xml(project) -> list[dict]:
         node = nodes[object_id]
         child_ids = sorted(
             children_map.get(object_id, []),
-            key=lambda x: nodes[x].findtext("SequenceNumber") or "0",
+            key=lambda x: _seq_key(nodes[x].findtext("SequenceNumber")),
         )
         result = {"name": node.findtext("Name") or ""}
         if child_ids:
