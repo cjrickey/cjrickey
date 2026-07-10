@@ -24,12 +24,38 @@ class P6XmlFile:
     root: ET.Element
 
 
+# Real P6/PMXML exports can carry far more than the schedule data this
+# app reads -- resource assignments, UDFs, activity codes, notes, risks,
+# calendars, S-curve spread data, etc. -- and a plain ET.parse() keeps
+# all of it in memory for the whole request regardless of whether any of
+# it is ever looked at (verified: none of these tags are referenced
+# anywhere in xml_parser.py or activity_extractor.py). Cleared the
+# instant each one's closing tag is parsed, so memory stays roughly
+# proportional to what this app actually uses, not to whatever the
+# export happens to include.
+_UNUSED_HEAVY_TAGS = {
+    "ResourceAssignment", "UDF", "UDFType", "ActivityCode", "ActivityCodeType",
+    "ActivityCodeTypeValue", "Expense", "Step", "Risk", "Role", "Resource",
+    "Calendar", "WorkTimeException", "ResourceCode", "ResourceCodeType",
+    "ProjectCode", "ProjectCodeType", "Currency", "FinancialPeriod",
+    "ScheduleOptions", "ProjectSpread", "ResourceAssignmentSpread",
+    "Notebook", "ActivityNote", "WBSNote", "ProjectNote",
+}
+
+
 def parse_p6_xml(path: str) -> P6XmlFile:
-    tree = ET.parse(path)
-    root = tree.getroot()
-    for elem in root.iter():
+    root = None
+    # iterparse still builds the full tree as it goes -- the memory win
+    # comes from clearing unused elements the moment they're complete,
+    # not from avoiding tree-building itself. events=("end",) means each
+    # element arrives once, fully parsed; the last one is always the
+    # document root.
+    for _, elem in ET.iterparse(path, events=("end",)):
         if "}" in elem.tag:
             elem.tag = elem.tag.split("}", 1)[1]
+        if elem.tag in _UNUSED_HEAVY_TAGS:
+            elem.clear()
+        root = elem
     return P6XmlFile(root=root)
 
 
