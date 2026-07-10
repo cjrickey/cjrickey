@@ -80,15 +80,12 @@ MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", 
 # durable fix if this ever needs to be legitimately raised.
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 * 1024
 
-# Critical/near-critical path data is meant to read as a paragraph or two
-# of connected prose per path (see prompt_templates.py), not an
-# enumeration -- but a real project's critical path from start to finish
-# can easily run past 40 activities, so the cap needs real headroom above
-# that, not a pure "short chain" assumption. critical_paths is NOT
-# windowed by date (deliberately, so it always covers the full remaining
-# chain to completion) -- only WBS scope shrinks it, so the message below
-# must say that, not "narrow the date range," which wouldn't do anything
-# for this one.
+# Near-critical/critical aggregate data (near_critical_discussion) is
+# meant to read as a paragraph or two, not an enumeration, and has no
+# narrowing mechanism of its own the way critical_paths does (see below)
+# -- so it still needs a cap. A real project's critical path from start
+# to finish can easily run past 40 activities, so the cap needs real
+# headroom above that, not a pure "short chain" assumption.
 MAX_PATH_NARRATIVE_ACTIVITIES = int(os.environ.get("MAX_PATH_NARRATIVE_ACTIVITIES", "100"))
 
 # The main report body groups activities by area and can reasonably
@@ -98,9 +95,15 @@ MAX_REPORT_ACTIVITIES = int(os.environ.get("MAX_REPORT_ACTIVITIES", "500"))
 
 
 def _check_payload_size(payload: dict, report_type: str) -> None:
-    critical_path_activities = sum(len(p["activities"]) for p in payload.get("critical_paths", []))
+    # critical_paths has no cap here, deliberately -- filter_engine.
+    # _top_critical_paths already narrows a schedule with any number of
+    # critical activities down to the 3 worst distinct paths, which is
+    # the actual mechanism for keeping this section short on a badly
+    # behind schedule (see prompt_templates.py), not a hard activity
+    # count. A single traced chain can legitimately run long on a big
+    # project; blocking generation over that would defeat the point of
+    # having primary/secondary/tertiary in the first place.
     path_lists = {
-        "critical path": critical_path_activities,
         "near-critical": len(payload.get("near_critical_activities", [])),
         "critical": len(payload.get("critical_activities", [])),
     }
