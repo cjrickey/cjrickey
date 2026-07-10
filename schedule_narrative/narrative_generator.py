@@ -38,20 +38,26 @@ def _call_claude(system_prompt: str, payload: dict) -> str:
     import anthropic  # pip install anthropic
 
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    message = client.messages.create(
+    # Sonnet 5 runs adaptive thinking by default -- even though we never
+    # pass a `thinking` param -- and that reasoning eats into max_tokens
+    # before a single word of visible text is written. On a large schedule
+    # with several bolt-on sections enabled (e.g. the full remaining
+    # critical path chain, which must cover every not-yet-completed
+    # critical activity to project completion, not just a windowed few),
+    # 16384 total tokens could be entirely consumed by thinking, leaving
+    # zero text blocks. Sized well above realistic worst-case need instead;
+    # max_tokens this large requires streaming (the SDK refuses a
+    # non-streaming request it estimates could run past ~10 minutes).
+    with client.messages.stream(
         model="claude-sonnet-5",
-        # Sonnet 5's adaptive thinking spends part of this budget reasoning
-        # before it writes anything -- on larger schedules (more activities
-        # to weigh, more area groups to rank by severity) it can exhaust the
-        # budget entirely while thinking, leaving zero text blocks. Real
-        # production schedules can carry 100+ activities in a single window,
-        # well past what 4096 leaves room for on top of thinking.
-        max_tokens=16384,
+        max_tokens=64000,
         system=system_prompt,
         messages=[
             {"role": "user", "content": json.dumps(payload, indent=2)},
         ],
-    )
+    ) as stream:
+        message = stream.get_final_message()
+
     # content[0] isn't reliably the text block -- a ThinkingBlock can precede
     # it -- so pull out the text block(s) by type instead of assuming position.
     text = "".join(block.text for block in message.content if block.type == "text")
