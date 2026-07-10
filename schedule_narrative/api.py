@@ -80,12 +80,17 @@ MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", 
 # durable fix if this ever needs to be legitimately raised.
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 * 1024
 
-# Near-critical/critical aggregate data (near_critical_discussion) is
-# meant to read as a paragraph or two, not an enumeration, and has no
-# narrowing mechanism of its own the way critical_paths does (see below)
-# -- so it still needs a cap. A real project's critical path from start
-# to finish can easily run past 40 activities, so the cap needs real
-# headroom above that, not a pure "short chain" assumption.
+# near_critical_activities (near_critical_discussion) is meant to read
+# as a paragraph or two, not an enumeration, and -- unlike critical_paths
+# -- has no narrowing mechanism of its own, since near-critical items
+# aren't chained the way a driving critical path is. Still needs a cap
+# for that one reason. (critical_activities, the monthly full critical
+# list, and critical_paths itself are NOT capped: neither is actually
+# enumerated by any narration instruction any more -- critical_activities
+# only ever feeds critical_path_summary's aggregate count/most-behind
+# item, and critical_paths is already self-narrowed to the 3 worst
+# chains -- so capping either just blocked schedules with a lot of
+# critical activities for no narrative benefit.)
 MAX_PATH_NARRATIVE_ACTIVITIES = int(os.environ.get("MAX_PATH_NARRATIVE_ACTIVITIES", "100"))
 
 # The main report body groups activities by area and can reasonably
@@ -95,26 +100,14 @@ MAX_REPORT_ACTIVITIES = int(os.environ.get("MAX_REPORT_ACTIVITIES", "500"))
 
 
 def _check_payload_size(payload: dict, report_type: str) -> None:
-    # critical_paths has no cap here, deliberately -- filter_engine.
-    # _top_critical_paths already narrows a schedule with any number of
-    # critical activities down to the 3 worst distinct paths, which is
-    # the actual mechanism for keeping this section short on a badly
-    # behind schedule (see prompt_templates.py), not a hard activity
-    # count. A single traced chain can legitimately run long on a big
-    # project; blocking generation over that would defeat the point of
-    # having primary/secondary/tertiary in the first place.
-    path_lists = {
-        "near-critical": len(payload.get("near_critical_activities", [])),
-        "critical": len(payload.get("critical_activities", [])),
-    }
-    for label, count in path_lists.items():
-        if count > MAX_PATH_NARRATIVE_ACTIVITIES:
-            raise HTTPException(
-                400,
-                f"This schedule has {count} {label} activities in scope -- too many to "
-                f"narrate as a short critical-path narrative (limit {MAX_PATH_NARRATIVE_ACTIVITIES}). "
-                "Narrow the WBS scope to a smaller area of the project and try again.",
-            )
+    near_critical_count = len(payload.get("near_critical_activities", []))
+    if near_critical_count > MAX_PATH_NARRATIVE_ACTIVITIES:
+        raise HTTPException(
+            400,
+            f"This schedule has {near_critical_count} near-critical activities in scope -- too "
+            f"many to narrate as a short discussion (limit {MAX_PATH_NARRATIVE_ACTIVITIES}). "
+            "Narrow the WBS scope to a smaller area of the project and try again.",
+        )
 
     if report_type == "weekly_oac":
         total = len(payload.get("completed_activities", [])) + len(payload.get("upcoming_activities", []))
