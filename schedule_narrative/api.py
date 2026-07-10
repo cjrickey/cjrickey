@@ -71,14 +71,15 @@ MAX_NARRATIVES_PER_DAY = int(_max_narratives_env) if _max_narratives_env else No
 MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", "150000"))
 
 # Critical/near-critical path data is meant to read as a paragraph or two
-# of connected prose (see prompt_templates.py), not an enumeration -- a
-# real driving critical path is a short chain even on a huge project, so
-# a count this high only happens on a badly-scoped or pathological
-# request. remaining_critical_path is NOT windowed by date (deliberately,
-# so it always covers the full remaining chain to completion) -- only
-# WBS scope shrinks it, so the message below must say that, not "narrow
-# the date range," which wouldn't do anything for this one.
-MAX_PATH_NARRATIVE_ACTIVITIES = int(os.environ.get("MAX_PATH_NARRATIVE_ACTIVITIES", "40"))
+# of connected prose (see prompt_templates.py), not an enumeration -- but
+# a real project's critical path from start to finish can easily run
+# past 40 activities, so the cap needs real headroom above that, not a
+# pure "short chain" assumption. remaining_critical_path is NOT windowed
+# by date (deliberately, so it always covers the full remaining chain to
+# completion) -- only WBS scope shrinks it, so the message below must
+# say that, not "narrow the date range," which wouldn't do anything for
+# this one.
+MAX_PATH_NARRATIVE_ACTIVITIES = int(os.environ.get("MAX_PATH_NARRATIVE_ACTIVITIES", "100"))
 
 # The main report body groups activities by area and can reasonably
 # summarize a few hundred -- still much less than a "monster" schedule's
