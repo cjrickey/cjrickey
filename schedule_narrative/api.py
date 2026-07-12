@@ -22,6 +22,7 @@ Usage caps are a daily per-user narrative-generation limit
 (MAX_NARRATIVES_PER_DAY) to bound Anthropic API spend on top of the
 trial/subscription gate; unset means unlimited.
 """
+import asyncio
 import os
 import uuid
 from datetime import datetime, timezone
@@ -82,6 +83,20 @@ MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", 
 # the two values equal; raising this durably means upgrading the Render
 # instance's memory tier, then bumping both.
 MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50")) * 1024 * 1024
+
+# Parsing a large P6 export briefly holds the whole file plus its expanded
+# structure in memory (a 50 MB file can peak in the hundreds of MB). Render
+# runs a single Uvicorn worker whose threadpool would otherwise let dozens of
+# uploads parse at once, so a burst of simultaneous uploads could exhaust the
+# instance's memory and take the service down for EVERY user. This bounds how
+# many parse at the same time; excess uploads wait briefly, then get a clean
+# 503 (retryable) instead of the instance OOMing. Defaults to 1 -- the only
+# value that's safe on a 512 MB instance, where even one large parse nears the
+# limit. Raise it via the env var for more throughput once on a bigger
+# instance (roughly one slot per ~700 MB of RAM: 2-3 on a 2 GB instance).
+MAX_CONCURRENT_PARSES = int(os.environ.get("MAX_CONCURRENT_PARSES", "1"))
+PARSE_QUEUE_TIMEOUT_SECONDS = int(os.environ.get("PARSE_QUEUE_TIMEOUT_SECONDS", "45"))
+_parse_semaphore = asyncio.Semaphore(MAX_CONCURRENT_PARSES)
 
 # No cap on report size any more, for any field -- critical_paths,
 # nearest_near_critical_path, and critical_activities (monthly's full
@@ -170,6 +185,24 @@ def _sniff_file_kind(contents: bytes) -> str:
 
 @app.post("/schedules/upload")
 async def upload_schedule(file: UploadFile, user_id: str = Depends(require_user)):
+    # Concurrency guard (see MAX_CONCURRENT_PARSES): only so many uploads may
+    # parse at once. If every slot is busy, wait up to the timeout, then tell
+    # the user to retry rather than piling on until the instance runs out of
+    # memory. release() is in finally so a slot is never leaked on error.
+    try:
+        await asyncio.wait_for(_parse_semaphore.acquire(), timeout=PARSE_QUEUE_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            503,
+            "The server is busy processing other uploads right now. Please try again in a moment.",
+        )
+    try:
+        return await _read_and_parse_upload(file, user_id)
+    finally:
+        _parse_semaphore.release()
+
+
+async def _read_and_parse_upload(file: UploadFile, user_id: str) -> dict:
     contents = await file.read()
     if len(contents) > MAX_UPLOAD_SIZE_BYTES:
         raise HTTPException(
