@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import { UploadPanel } from "@/components/UploadPanel";
+import { Logo } from "@/components/Logo";
 import { WbsTree } from "@/components/WbsTree";
 import { FilterPanel, DEFAULT_FILTER_STATE, type FilterState } from "@/components/FilterPanel";
 import { NarrativeOutput } from "@/components/NarrativeOutput";
@@ -100,14 +101,8 @@ function ScheduleNarrativeApp() {
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-4xl px-6 py-12">
-        <header className="border-b border-rule pb-6 mb-8 flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative Generator</h1>
-            <p className="text-sm text-ink-muted mt-1">
-              Upload a P6 XER or XML export. Generate a weekly OAC or monthly executive narrative grounded strictly in
-              the schedule&rsquo;s own data.
-            </p>
-          </div>
+        <header className="border-b border-rule pb-5 mb-10 flex items-center justify-between gap-6">
+          <Logo />
           <div className="flex items-center gap-4 shrink-0">
             {billing.status === "admin" ? (
               <span className="text-sm text-ink-muted">Admin access</span>
@@ -120,7 +115,7 @@ function ScheduleNarrativeApp() {
                 Manage billing
               </button>
             ) : (
-              <span className="flex items-center gap-3 text-sm">
+              <span className="hidden items-center gap-3 text-sm sm:flex">
                 <span className="text-ink-muted">
                   Free trial &middot; {billing.trial_remaining} of {billing.trial_narratives_limit} left
                 </span>
@@ -136,7 +131,67 @@ function ScheduleNarrativeApp() {
         {billingError && <p className="-mt-4 mb-8 text-sm text-oxide">{billingError}</p>}
 
         {!schedule ? (
-          <UploadPanel onUpload={handleUpload} uploading={uploading} error={uploadError} />
+          <div className="space-y-8">
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-oxide">
+                P6 schedules &rarr; plain-English reports
+              </p>
+              <h1 className="mt-3 text-3xl sm:text-4xl font-bold leading-tight tracking-tight text-balance">
+                Turn a P6 schedule into a report your owner will actually read.
+              </h1>
+              <p className="mt-4 text-base leading-relaxed text-ink-muted">
+                Upload a Primavera P6 XER or XML export and generate a weekly OAC or monthly executive
+                narrative &mdash; critical path, milestones, what changed &mdash; grounded strictly in the
+                schedule&rsquo;s own data. In about a minute.
+              </p>
+            </div>
+
+            <UploadPanel onUpload={handleUpload} uploading={uploading} error={uploadError} />
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                {
+                  title: "Weekly OAC updates",
+                  body: "The Completed / Upcoming write-up, in plain language, ready to drop into meeting minutes.",
+                  icon: (
+                    <>
+                      <rect x="14" y="30" width="52" height="12" rx="6" fill="var(--oxide)" />
+                      <rect x="30" y="52" width="56" height="12" rx="6" fill="var(--oxide)" />
+                    </>
+                  ),
+                },
+                {
+                  title: "Monthly executive",
+                  body: "Milestone health and trajectory for leadership who skim, not scroll.",
+                  icon: <circle cx="50" cy="50" r="30" fill="none" stroke="var(--oxide)" strokeWidth="10" />,
+                },
+                {
+                  title: "Critical path narrative",
+                  body: "The driving path to completion — primary, secondary, tertiary — as connected prose.",
+                  icon: (
+                    <path
+                      d="M20 70 L45 45 L60 60 L82 30"
+                      fill="none"
+                      stroke="var(--oxide)"
+                      strokeWidth="10"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ),
+                },
+              ].map((f) => (
+                <div key={f.title} className="rounded-lg border border-rule bg-surface p-5">
+                  <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-md bg-oxide-surface">
+                    <svg width="17" height="17" viewBox="0 0 100 100" aria-hidden="true">
+                      {f.icon}
+                    </svg>
+                  </div>
+                  <h3 className="text-sm font-semibold text-ink">{f.title}</h3>
+                  <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">{f.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="space-y-10">
             <div className="flex flex-wrap items-center justify-between gap-3 text-sm">

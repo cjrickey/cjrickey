@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import { createCheckoutSession } from "@/lib/api";
 import type { BillingPlan } from "@/lib/types";
 
@@ -40,8 +41,8 @@ function PricingContent() {
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-md px-6 py-16">
-        <div className="flex items-center justify-between border-b border-rule pb-6 mb-10">
-          <h1 className="text-xl font-semibold tracking-tight">Schedule Narrative Generator</h1>
+        <div className="flex items-center justify-between border-b border-rule pb-5 mb-10">
+          <Logo markSize={34} />
           <UserButton />
         </div>
 

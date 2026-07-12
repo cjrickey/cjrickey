@@ -13,6 +13,7 @@
   --ink-muted: #6b6963;
   --rule: #dedbd3;
   --oxide: #a8441e;
+  --oxide-bright: #c0592a;
   --oxide-surface: #f3e3dc;
   --moss: #4b6b3f;
   --moss-surface: #e7ede2;
@@ -28,6 +29,7 @@
     --ink-muted: #9c9993;
     --rule: #37352f;
     --oxide: #d97a54;
+    --oxide-bright: #e0895f;
     --oxide-surface: #3a2620;
     --moss: #8fb37a;
     --moss-surface: #26301f;
@@ -43,6 +45,7 @@
   --color-ink-muted: var(--ink-muted);
   --color-rule: var(--rule);
   --color-oxide: var(--oxide);
+  --color-oxide-bright: var(--oxide-bright);
   --color-oxide-surface: var(--oxide-surface);
   --color-moss: var(--moss);
   --color-moss-surface: var(--moss-surface);
@@ -53,7 +56,15 @@
 }
 
 body {
-  background: var(--paper);
+  /* Faint drafting/blueprint grid over the paper ground -- fits the
+     "drafting paper" identity and gives the page depth without competing
+     with content (surfaces sit on white cards above it). Adapts to theme
+     via --rule. */
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--rule) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--rule) 55%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
   color: var(--ink);
   font-family: var(--font-sans), sans-serif;
 }
