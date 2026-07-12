@@ -40,7 +40,8 @@ from activity_extractor import (
     get_data_date,
     extract_activities_from_xml,
     get_data_date_xml,
-    critical_status_coverage_warning,
+    extraction_warnings,
+    extraction_diagnostics,
 )
 from filter_engine import FilterSpec, apply_filters, build_monthly_executive_payload
 from narrative_generator import generate_weekly_oac_narrative, generate_monthly_executive_narrative
@@ -258,11 +259,15 @@ async def upload_schedule(file: UploadFile, user_id: str = Depends(require_user)
         # this to tell the user upfront whether variance/narration against
         # a real P6 Baseline will be available for this upload.
         "has_baseline": has_baseline,
-        # None on a healthy file. Set when this export's field-naming
-        # convention for float/criticality wasn't recognized (see
-        # critical_status_coverage_warning) -- caught here at upload time
-        # instead of only surfacing later as a confusing narrative.
-        "data_quality_warning": critical_status_coverage_warning(activities),
+        # Empty string on a healthy file. One or more plain-language
+        # warnings (joined) when this export's field naming for float,
+        # dates, or logic links wasn't recognized -- caught here at upload
+        # time instead of only surfacing later as a confusing narrative.
+        "data_quality_warning": " ".join(extraction_warnings(activities)) or None,
+        # Compact health readout (counts only, no schedule content) so a
+        # variant mis-parse is visible at a glance -- see
+        # extraction_diagnostics.
+        "diagnostics": extraction_diagnostics(activities),
     }
 
 

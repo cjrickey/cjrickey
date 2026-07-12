@@ -655,6 +655,73 @@ def critical_status_coverage_warning(activities: list[Activity]) -> Optional[str
     )
 
 
+def extraction_diagnostics(activities: list[Activity]) -> dict:
+    """A compact health readout of what extraction actually pulled out of a
+    file, returned on every upload. Its point is variant-robustness: P6
+    exports vary by version/settings in ways we can't fully anticipate, so
+    rather than only handle the variants we've seen, this surfaces the
+    numbers that make a mis-parse obvious at a glance (e.g. "6,500
+    activities, 0 relationships parsed" screams that this file's logic-link
+    naming isn't recognized) instead of it surfacing days later as a
+    confusing narrative. Pure counts -- no schedule content."""
+    total = len(activities)
+    non_completed = [a for a in activities if a.status != "completed"]
+    with_float = sum(1 for a in non_completed if a.total_float_days is not None)
+    with_dates = sum(
+        1 for a in activities
+        if a.planned_start or a.planned_finish or a.actual_start or a.actual_finish
+    )
+    return {
+        "activity_count": total,
+        "critical_count": sum(1 for a in activities if a.is_critical),
+        "milestone_count": sum(1 for a in activities if a.is_milestone),
+        "relationships_parsed": sum(len(a.predecessors) for a in activities),
+        "float_coverage_pct": round(100 * with_float / len(non_completed)) if non_completed else 100,
+        "date_coverage_pct": round(100 * with_dates / total) if total else 0,
+        "status_breakdown": {
+            "completed": sum(1 for a in activities if a.status == "completed"),
+            "in_progress": sum(1 for a in activities if a.status == "in_progress"),
+            "not_started": sum(1 for a in activities if a.status == "not_started"),
+        },
+    }
+
+
+def extraction_warnings(activities: list[Activity]) -> list[str]:
+    """All plain-language data-quality warnings for a file, generalizing the
+    float-coverage check (critical_status_coverage_warning) to the other
+    fields a variant export could name differently: dates and logic links.
+    Each is a "did most activities come through with X?" test, so it flags
+    an unrecognized field-naming convention without having to know the
+    specific convention. Returns [] for a clean file."""
+    warnings: list[str] = []
+
+    float_warning = critical_status_coverage_warning(activities)
+    if float_warning:
+        warnings.append(float_warning)
+
+    diag = extraction_diagnostics(activities)
+
+    if diag["activity_count"] > 0 and diag["date_coverage_pct"] < 50:
+        warnings.append(
+            "Start/finish dates could not be read for most activities in this file. "
+            "This can happen with certain P6 export settings or versions -- the report's "
+            "dates may be incomplete. Contact us if this persists."
+        )
+
+    # Zero logic links across a non-trivial schedule almost always means the
+    # relationship data didn't parse (a variant naming), not that the
+    # schedule genuinely has none. Threshold avoids false alarms on small,
+    # legitimately link-sparse schedules.
+    if diag["activity_count"] >= 25 and diag["relationships_parsed"] == 0:
+        warnings.append(
+            "No predecessor/successor logic could be read from this file, so critical-path "
+            "sequencing may be limited. This can happen with certain P6 export settings or "
+            "versions. Contact us if this persists."
+        )
+
+    return warnings
+
+
 def get_data_date_xml(project: ET.Element) -> Optional[datetime]:
     return parse_p6_datetime(_normalize_xml_date(project.findtext("DataDate")))
 

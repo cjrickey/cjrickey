@@ -3,6 +3,20 @@ export type WbsNode = {
   children?: WbsNode[];
 };
 
+export type ExtractionDiagnostics = {
+  activity_count: number;
+  critical_count: number;
+  milestone_count: number;
+  relationships_parsed: number;
+  float_coverage_pct: number;
+  date_coverage_pct: number;
+  status_breakdown: {
+    completed: number;
+    in_progress: number;
+    not_started: number;
+  };
+};
+
 export type UploadResponse = {
   schedule_id: string;
   data_date: string;
@@ -10,6 +24,7 @@ export type UploadResponse = {
   wbs_tree: WbsNode[];
   has_baseline: boolean;
   data_quality_warning: string | null;
+  diagnostics: ExtractionDiagnostics;
 };
 
 export type ReportType = "weekly_oac" | "monthly_executive";

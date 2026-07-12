@@ -175,6 +175,22 @@ function ScheduleNarrativeApp() {
               <p className="-mt-6 text-xs text-ochre">{schedule.data_quality_warning}</p>
             )}
 
+            <details className="-mt-6 text-xs text-ink-muted">
+              <summary className="cursor-pointer select-none hover:text-ink">Extraction details</summary>
+              <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 font-mono">
+                <span>{schedule.diagnostics.critical_count} critical</span>
+                <span>{schedule.diagnostics.milestone_count} milestones</span>
+                <span>{schedule.diagnostics.relationships_parsed} logic links</span>
+                <span>{schedule.diagnostics.float_coverage_pct}% with float</span>
+                <span>{schedule.diagnostics.date_coverage_pct}% with dates</span>
+                <span>
+                  {schedule.diagnostics.status_breakdown.completed} done ·{" "}
+                  {schedule.diagnostics.status_breakdown.in_progress} in progress ·{" "}
+                  {schedule.diagnostics.status_breakdown.not_started} not started
+                </span>
+              </div>
+            </details>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
               <div className="md:pr-8 md:border-r border-rule">
                 <h2 className="text-xs font-medium uppercase tracking-wider text-ink-muted mb-4">
