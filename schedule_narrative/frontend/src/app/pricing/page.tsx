@@ -97,8 +97,8 @@ function PricingContent() {
         {error && <p className="mt-3 text-sm text-oxide">{error}</p>}
 
         <footer className="mt-16 pt-6 border-t border-rule text-xs text-ink-muted space-y-2">
-          <a href="mailto:feedback@schedulenarrative.com" className="block hover:text-oxide transition-colors">
-            Questions or feedback? feedback@schedulenarrative.com
+          <a href="mailto:feedback@schedule-narrative.com" className="block hover:text-oxide transition-colors">
+            Questions or feedback? feedback@schedule-narrative.com
           </a>
           <Link href="/terms" className="block hover:text-oxide transition-colors">
             Terms &amp; Disclaimer

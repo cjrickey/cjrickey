@@ -154,8 +154,8 @@ export default function TermsPage() {
             <h2 className="font-semibold mb-2">12. Contact</h2>
             <p>
               Questions about these Terms:{" "}
-              <a href="mailto:feedback@schedulenarrative.com" className="text-oxide hover:brightness-110">
-                feedback@schedulenarrative.com
+              <a href="mailto:feedback@schedule-narrative.com" className="text-oxide hover:brightness-110">
+                feedback@schedule-narrative.com
               </a>
               .
             </p>

@@ -303,8 +303,8 @@ function ScheduleNarrativeApp() {
         )}
 
         <footer className="mt-16 pt-6 border-t border-rule text-xs text-ink-muted space-y-2">
-          <a href="mailto:feedback@schedulenarrative.com" className="block hover:text-oxide transition-colors">
-            Questions or feedback? feedback@schedulenarrative.com
+          <a href="mailto:feedback@schedule-narrative.com" className="block hover:text-oxide transition-colors">
+            Questions or feedback? feedback@schedule-narrative.com
           </a>
           <p className="leading-relaxed max-w-2xl">
             Narratives are automatically generated from the file you upload and may contain errors or
