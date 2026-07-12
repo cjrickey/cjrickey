@@ -46,8 +46,6 @@ export type NarrativeRequest = {
   lookback_days: number;
   lookahead_days: number;
   wbs_node_names: string[] | null;
-  critical_only: boolean;
-  milestones_only: boolean;
   include_schedule_metrics: boolean;
   steer: string | null;
   sections: NarrativeSections;

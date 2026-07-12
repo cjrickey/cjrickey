@@ -4,10 +4,11 @@ import type { NarrativeSections, ReportType } from "@/lib/types";
 
 export type FilterState = {
   reportType: ReportType;
-  lookbackDays: string; // kept as string -- a number-typed controlled input
-  lookaheadDays: string; // re-renders with a stale/padded string on certain
-  criticalOnly: boolean; // edit sequences (e.g. clearing then typing a digit
-  milestonesOnly: boolean; // shows "09" instead of "9")
+  // Kept as strings -- a number-typed controlled input re-renders with a
+  // stale/padded string on certain edit sequences (e.g. clearing then typing
+  // a digit shows "09" instead of "9").
+  lookbackDays: string;
+  lookaheadDays: string;
   includeScheduleMetrics: boolean;
   steer: string;
   sections: NarrativeSections;
@@ -29,8 +30,6 @@ export const DEFAULT_FILTER_STATE: FilterState = {
   reportType: "weekly_oac",
   lookbackDays: "7",
   lookaheadDays: "7",
-  criticalOnly: false,
-  milestonesOnly: false,
   includeScheduleMetrics: true,
   steer: "",
   sections: DEFAULT_SECTIONS,
@@ -125,24 +124,6 @@ export function FilterPanel({ value, onChange, onSubmit, submitting, canSubmit, 
       </div>
 
       <div className="space-y-2.5">
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={value.criticalOnly}
-            onChange={(e) => set("criticalOnly", e.target.checked)}
-            className="h-4 w-4 rounded-sm border-rule accent-oxide"
-          />
-          Critical activities only
-        </label>
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={value.milestonesOnly}
-            onChange={(e) => set("milestonesOnly", e.target.checked)}
-            className="h-4 w-4 rounded-sm border-rule accent-oxide"
-          />
-          Milestones only
-        </label>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"

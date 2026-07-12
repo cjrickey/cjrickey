@@ -82,8 +82,6 @@ function ScheduleNarrativeApp() {
           lookback_days: lookbackDays,
           lookahead_days: lookaheadDays,
           wbs_node_names: checkedWbsNames.size > 0 ? Array.from(checkedWbsNames) : null,
-          critical_only: filters.criticalOnly,
-          milestones_only: filters.milestonesOnly,
           include_schedule_metrics: filters.includeScheduleMetrics,
           steer: filters.steer.trim() === "" ? null : filters.steer.trim(),
           sections: filters.sections,
