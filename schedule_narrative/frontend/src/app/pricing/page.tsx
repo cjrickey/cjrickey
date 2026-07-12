@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
@@ -95,10 +96,13 @@ function PricingContent() {
 
         {error && <p className="mt-3 text-sm text-oxide">{error}</p>}
 
-        <footer className="mt-16 pt-6 border-t border-rule text-xs text-ink-muted">
-          <a href="mailto:feedback@schedulenarrative.com" className="hover:text-oxide transition-colors">
+        <footer className="mt-16 pt-6 border-t border-rule text-xs text-ink-muted space-y-2">
+          <a href="mailto:feedback@schedulenarrative.com" className="block hover:text-oxide transition-colors">
             Questions or feedback? feedback@schedulenarrative.com
           </a>
+          <Link href="/terms" className="block hover:text-oxide transition-colors">
+            Terms &amp; Disclaimer
+          </Link>
         </footer>
       </div>
     </div>

@@ -75,12 +75,13 @@ MAX_ACTIVITIES_PER_SCHEDULE = int(os.environ.get("MAX_ACTIVITIES_PER_SCHEDULE", 
 # A real P6 export can be much larger than its activity count alone
 # suggests -- resource assignments, UDFs, activity codes, and notes this
 # app never reads can bloat a file to 50+ MB for a couple thousand
-# activities. This is a safety net against a truly extreme file
-# exhausting the instance's memory (see the Render OOM incident this was
-# added for), set comfortably above real observed exports, not a
-# business limit -- upgrading the Render instance's memory tier is the
-# durable fix if this ever needs to be legitimately raised.
-MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "100")) * 1024 * 1024
+# activities. This is the authoritative backstop for the browser-side
+# check (frontend MAX_UPLOAD_MB, kept in sync): uploads above this have
+# failed in production (memory/transfer limits on the instance) before
+# reaching clean handling, so the limit sits comfortably below that. Keep
+# the two values equal; raising this durably means upgrading the Render
+# instance's memory tier, then bumping both.
+MAX_UPLOAD_SIZE_BYTES = int(os.environ.get("MAX_UPLOAD_SIZE_MB", "50")) * 1024 * 1024
 
 # No cap on report size any more, for any field -- critical_paths,
 # nearest_near_critical_path, and critical_activities (monthly's full

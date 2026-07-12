@@ -9,6 +9,14 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+// Largest upload we accept, checked in the browser before a byte is sent so an
+// oversized file fails instantly with a clear limit instead of dying mid-upload.
+// Kept in sync with the backend's MAX_UPLOAD_SIZE_MB (its authoritative
+// backstop). Set deliberately below the point where real uploads have failed
+// in production -- P6 exports this large are edge cases, and a file that big is
+// almost always bloated with resource/UDF/note data the app never reads.
+export const MAX_UPLOAD_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 50);
+
 function authHeaders(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` };
 }

@@ -10,7 +10,7 @@ import { FilterPanel, DEFAULT_FILTER_STATE, type FilterState } from "@/component
 import { NarrativeOutput } from "@/components/NarrativeOutput";
 import { SubscriptionGate } from "@/components/SubscriptionGate";
 import { useBilling } from "@/lib/BillingContext";
-import { createPortalSession, generateNarrative, uploadSchedule } from "@/lib/api";
+import { createPortalSession, generateNarrative, uploadSchedule, MAX_UPLOAD_MB } from "@/lib/api";
 import type { NarrativeResponse, UploadResponse } from "@/lib/types";
 
 export default function Home() {
@@ -37,6 +37,19 @@ function ScheduleNarrativeApp() {
   const [billingError, setBillingError] = useState<string | null>(null);
 
   async function handleUpload(file: File) {
+    // Check size in the browser first -- an oversized file otherwise uploads
+    // blindly and dies mid-transfer with a vague error. This gives the user the
+    // exact limit and their file's size up front, before a byte is sent.
+    const fileMb = file.size / 1024 / 1024;
+    if (fileMb > MAX_UPLOAD_MB) {
+      setUploadError(
+        `This file is ${fileMb.toFixed(0)} MB, above the ${MAX_UPLOAD_MB} MB limit. ` +
+          `P6 exports this large are usually bloated with data the app never reads ` +
+          `(resource assignments, UDFs, activity codes, notes) -- re-exporting with those ` +
+          `options unchecked normally brings it well under the limit.`,
+      );
+      return;
+    }
     setUploading(true);
     setUploadError(null);
     try {
@@ -289,10 +302,19 @@ function ScheduleNarrativeApp() {
           </div>
         )}
 
-        <footer className="mt-16 pt-6 border-t border-rule text-xs text-ink-muted">
-          <a href="mailto:feedback@schedulenarrative.com" className="hover:text-oxide transition-colors">
+        <footer className="mt-16 pt-6 border-t border-rule text-xs text-ink-muted space-y-2">
+          <a href="mailto:feedback@schedulenarrative.com" className="block hover:text-oxide transition-colors">
             Questions or feedback? feedback@schedulenarrative.com
           </a>
+          <p className="leading-relaxed max-w-2xl">
+            Narratives are automatically generated from the file you upload and may contain errors or
+            approximations; review and verify any output before relying on or sharing it. Not professional
+            advice. Maximum upload size {MAX_UPLOAD_MB} MB. By using the app you agree to the{" "}
+            <Link href="/terms" className="text-oxide hover:brightness-110 transition-all">
+              Terms &amp; Disclaimer
+            </Link>
+            .
+          </p>
         </footer>
       </div>
     </div>

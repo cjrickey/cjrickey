@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { LogoMark } from "@/components/Logo";
+import { MAX_UPLOAD_MB } from "@/lib/api";
 
 type UploadPanelProps = {
   onUpload: (file: File) => void;
@@ -55,7 +56,7 @@ export function UploadPanel({ onUpload, uploading, error }: UploadPanelProps) {
         </span>
         <p className="mx-auto mt-5 max-w-md text-xs leading-relaxed text-ink-muted">
           XMLs can be exported with the Project Baseline included &mdash; check that box at export time to unlock
-          variance narration. A .xer export never carries baseline data.
+          variance narration. A .xer export never carries baseline data. Maximum file size {MAX_UPLOAD_MB} MB.
         </p>
         {error && <p className="mt-3 text-sm text-oxide">{error}</p>}
       </div>
