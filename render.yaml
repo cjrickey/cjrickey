@@ -6,6 +6,9 @@ services:
     rootDir: schedule_narrative
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    # Render polls this and won't route traffic to (and will restart) an
+    # instance that stops answering -- e.g. after an OOM. See GET /health.
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
         fromDatabase:

@@ -65,6 +65,18 @@ app.add_middleware(
 
 app.include_router(billing_router)
 
+
+@app.get("/health")
+async def health():
+    """Liveness probe -- public, no auth, no DB round-trip. Returns 200 as long
+    as the web process is up and its event loop is responsive; if the instance
+    is OOM-killed, hung, or crashed, this stops answering, which is exactly what
+    an uptime monitor (and Render's health check) needs to detect an outage.
+    Deliberately does NOT check the database, so a transient DB blip can't make
+    Render mark the instance unhealthy and restart it in a loop."""
+    return {"status": "ok"}
+
+
 _max_narratives_env = os.environ.get("MAX_NARRATIVES_PER_DAY")
 MAX_NARRATIVES_PER_DAY = int(_max_narratives_env) if _max_narratives_env else None
 
