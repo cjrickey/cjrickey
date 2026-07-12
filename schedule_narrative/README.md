@@ -235,6 +235,26 @@ npm run dev
 
 Then open `http://localhost:3000`. You'll be redirected to sign in, then straight to the tool -- no card needed for the first 3 narratives. Upload a `.xer` or `.xml` file and generate a narrative -- only a `.xml` export with the Project Baseline included will show variance vs. baseline; the app tells you which case you're in right after upload. After 3 narratives, generating is blocked with a prompt to visit `/pricing` and subscribe (use a [Stripe test card](https://stripe.com/docs/testing), e.g. `4242 4242 4242 4242`).
 
+## Running the tests
+
+A `pytest` suite covers the core pipeline -- XER/XML parsing, the schema
+variants (direct `TotalFloat`/`IsCritical`, `Remaining*`-only with
+calendar-aware float, embedded baseline variance, unrecognized fields),
+LOE exclusion, the filter engine (windowing, importance narrowing,
+multi-path critical-path detection, near-critical, driving-relationship
+selection), and the prompt-safety rules (never authorize a float number,
+never leak raw field names). Fixtures are synthetic P6 exports built in
+`tests/conftest.py` -- no real client schedules are committed.
+
+```
+cd schedule_narrative
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest
+```
+
+To extend the corpus, add a builder + fixture in `tests/conftest.py` and a
+test asserting against it.
+
 ## Deploying to production
 
 1. **Clerk**: create a production instance (separate from your dev instance), get its publishable/secret keys and Frontend API URL.
